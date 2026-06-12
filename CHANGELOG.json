@@ -10,6 +10,10 @@
       },
       {
         "type": "added",
+        "text": "Discovery hints for the bundled docs: an AGENTS.md pointer at the package root (also bundled) and a callout near the top of the README — script-free, so the zero-deps/auditable install surface is unchanged"
+      },
+      {
+        "type": "added",
         "text": "useFormTool: register a tool whose input schema is derived from the rendered DOM form — works with MUI, AntD, shadcn/ui, portals, any library that renders native controls"
       },
       {

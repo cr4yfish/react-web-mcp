@@ -37,6 +37,7 @@
   "files": [
     "dist",
     "doc",
+    "AGENTS.md",
     "README.md",
     "LICENSE"
   ],
