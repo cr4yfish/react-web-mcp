@@ -190,4 +190,86 @@ describe("ToolForm", () => {
     });
     expect(onAgentSubmit).not.toHaveBeenCalled();
   });
+
+  // The form must be noValidate: otherwise an agent-filled control that fails
+  // native HTML validation (e.g. an empty required field) blocks the submit,
+  // the submit event never fires, respondWith is never called, and the agent's
+  // invocation hangs — silently killing the page's tool channel.
+  it("renders noValidate so native constraints can't block agent submits", () => {
+    const { getByTestId } = renderForm();
+    const form = getByTestId("form") as HTMLFormElement;
+    expect(form.noValidate).toBe(true);
+  });
+
+  it("answers an agent submit even when a required field is invalid", async () => {
+    // `from` is required but left empty — native validation would block a
+    // browser submit; the agent path must answer regardless.
+    const onAgentSubmit = vi.fn(() => "ok");
+    const { getByTestId } = renderForm(undefined, onAgentSubmit);
+    const form = getByTestId("form") as HTMLFormElement;
+    // Force "invalid" to prove the agent path does not gate on validity.
+    vi.spyOn(form, "checkValidity").mockReturnValue(false);
+
+    const respondWith = vi.fn();
+    const event = new Event("submit", { bubbles: true, cancelable: true });
+    Object.assign(event, { agentInvoked: true, respondWith });
+    act(() => {
+      form.dispatchEvent(event);
+    });
+
+    expect(onAgentSubmit).toHaveBeenCalledTimes(1);
+    expect(respondWith).toHaveBeenCalledTimes(1);
+    const response = (await respondWith.mock.calls[0]?.[0]) as ToolResponse;
+    expect(response.content[0]?.text).toBe("ok");
+  });
+
+  it("re-validates human submits with reportValidity instead of submitting invalid", () => {
+    const onSubmit = vi.fn();
+    const { getByTestId } = render(
+      <ToolForm
+        name="feedback"
+        description="Send feedback"
+        onSubmit={onSubmit}
+        data-testid="form"
+      >
+        <input type="text" name="message" required />
+      </ToolForm>,
+    );
+    const form = getByTestId("form") as HTMLFormElement;
+    vi.spyOn(form, "checkValidity").mockReturnValue(false);
+    const reportValidity = vi.spyOn(form, "reportValidity").mockReturnValue(false);
+
+    const event = new Event("submit", { bubbles: true, cancelable: true });
+    act(() => {
+      form.dispatchEvent(event);
+    });
+
+    expect(reportValidity).toHaveBeenCalledTimes(1);
+    expect(event.defaultPrevented).toBe(true);
+    // The invalid submit is stopped before the consumer's handler runs.
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("lets a valid human submit through to the consumer's onSubmit", () => {
+    const onSubmit = vi.fn();
+    const { getByTestId } = render(
+      <ToolForm
+        name="feedback"
+        description="Send feedback"
+        onSubmit={onSubmit}
+        data-testid="form"
+      >
+        <input type="text" name="message" />
+      </ToolForm>,
+    );
+    const form = getByTestId("form") as HTMLFormElement;
+    vi.spyOn(form, "checkValidity").mockReturnValue(true);
+
+    const event = new Event("submit", { bubbles: true, cancelable: true });
+    act(() => {
+      form.dispatchEvent(event);
+    });
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
 });

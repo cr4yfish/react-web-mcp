@@ -477,12 +477,22 @@ import {
 var ToolForm = forwardRef(
   function ToolForm2({ name, description, autoSubmit, onAgentSubmit, onSubmit, children, ...rest }, ref) {
     const handleSubmit = (event) => {
-      onSubmit?.(event);
-      if (!onAgentSubmit || event.defaultPrevented) return;
+      const form = event.currentTarget;
       const native = event.nativeEvent;
-      if (!native.agentInvoked || typeof native.respondWith !== "function") return;
+      const isAgentSubmit = Boolean(native.agentInvoked) && typeof native.respondWith === "function";
+      if (!isAgentSubmit) {
+        if (typeof form.checkValidity === "function" && !form.checkValidity()) {
+          event.preventDefault();
+          form.reportValidity?.();
+          return;
+        }
+        onSubmit?.(event);
+        return;
+      }
+      onSubmit?.(event);
+      if (!onAgentSubmit || typeof native.respondWith !== "function") return;
       event.preventDefault();
-      const data = new FormData(event.currentTarget);
+      const data = new FormData(form);
       native.respondWith(
         (async () => {
           try {
@@ -500,6 +510,10 @@ var ToolForm = forwardRef(
         ...rest,
         ref,
         onSubmit: handleSubmit,
+        // See the component doc: disable native constraint validation so an
+        // agent-filled invalid field can't silently block submission and strand
+        // the invocation. Human submits are re-validated in handleSubmit.
+        noValidate: true,
         toolname: name,
         tooldescription: description,
         ...autoSubmit ? { toolautosubmit: "" } : {}

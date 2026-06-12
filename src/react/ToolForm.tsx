@@ -44,6 +44,14 @@ export interface ToolFormProps
  *
  * In browsers without WebMCP support this renders a perfectly ordinary form —
  * the extra attributes are simply ignored.
+ *
+ * The rendered form is `noValidate`: an agent-filled control that fails native
+ * HTML constraint validation (e.g. a `required` field the agent left empty)
+ * would otherwise block submission entirely — the `submit` event would never
+ * fire, `respondWith` would never be called, and the agent's invocation would
+ * hang unanswered, silencing every later tool call on the page. Human submits
+ * are re-validated in {@link handleSubmit} via `reportValidity()`, so users
+ * still get the browser's inline validation UI.
  */
 export const ToolForm = forwardRef<HTMLFormElement, ToolFormProps>(
   function ToolForm(
@@ -51,20 +59,38 @@ export const ToolForm = forwardRef<HTMLFormElement, ToolFormProps>(
     ref,
   ) {
     const handleSubmit: FormHTMLAttributes<HTMLFormElement>["onSubmit"] = (event) => {
-      onSubmit?.(event);
-      if (!onAgentSubmit || event.defaultPrevented) return;
-
+      const form = event.currentTarget;
       const native = event.nativeEvent as WebMCPSubmitEvent;
-      if (!native.agentInvoked || typeof native.respondWith !== "function") return;
+      const isAgentSubmit =
+        Boolean(native.agentInvoked) && typeof native.respondWith === "function";
+
+      if (!isAgentSubmit) {
+        // The form is `noValidate` (so agent submits are never silently
+        // blocked); re-apply constraint validation for human submits so they
+        // keep the browser's native inline error UI instead of submitting an
+        // invalid form. checkValidity()/reportValidity() work regardless of
+        // the noValidate attribute.
+        if (typeof form.checkValidity === "function" && !form.checkValidity()) {
+          event.preventDefault();
+          form.reportValidity?.();
+          return;
+        }
+        onSubmit?.(event);
+        return;
+      }
+
+      // Agent submit: let the consumer observe it, then ALWAYS answer. The
+      // promise handed to respondWith must fulfill no matter what — a missing
+      // response (whether from a consumer preventDefault, a synchronous throw,
+      // or an async rejection in onAgentSubmit) leaves the prevented invocation
+      // hanging, which poisons the page's message channel and silences every
+      // later tool call.
+      onSubmit?.(event);
+      if (!onAgentSubmit || typeof native.respondWith !== "function") return;
 
       // respondWith requires preventDefault to be called first.
       event.preventDefault();
-      const data = new FormData(event.currentTarget);
-      // The handed-over promise must ALWAYS fulfill: a synchronous throw or
-      // an async rejection from onAgentSubmit would otherwise leave the
-      // prevented invocation without a response — hanging the agent's call
-      // (and with it the page's message channel) instead of surfacing a
-      // readable isError result.
+      const data = new FormData(form);
       native.respondWith(
         (async () => {
           try {
@@ -83,6 +109,10 @@ export const ToolForm = forwardRef<HTMLFormElement, ToolFormProps>(
         ...rest,
         ref,
         onSubmit: handleSubmit,
+        // See the component doc: disable native constraint validation so an
+        // agent-filled invalid field can't silently block submission and strand
+        // the invocation. Human submits are re-validated in handleSubmit.
+        noValidate: true,
         toolname: name,
         tooldescription: description,
         ...(autoSubmit ? { toolautosubmit: "" } : {}),
