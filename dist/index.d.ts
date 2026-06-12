@@ -1,5 +1,5 @@
 import * as react from 'react';
-import { FormHTMLAttributes, FormEvent, ReactNode } from 'react';
+import { FormHTMLAttributes, FormEvent, ReactNode, RefObject } from 'react';
 
 /**
  * Type definitions for the WebMCP standard (`document.modelContext` /
@@ -176,6 +176,12 @@ declare const DEFAULT_MAX_RESULT_LENGTH = 50000;
 declare function getModelContext(): ModelContext | null;
 /** True when the current browser exposes the WebMCP API. */
 declare function isWebMCPSupported(): boolean;
+/**
+ * True when the WebMCP *testing* API (`navigator.modelContextTesting`) is
+ * available — i.e. Chrome with the `#enable-webmcp-testing` flag, as used by
+ * the Model Context Tool Inspector extension and the DevTools WebMCP panel.
+ */
+declare function isWebMCPTestingSupported(): boolean;
 /** Wraps plain text in the MCP `CallToolResult` content shape. */
 declare function textResult(text: string, isError?: boolean): ToolResponse;
 /**
@@ -224,6 +230,32 @@ declare function toolFormAttrs(options: {
  */
 declare function toolParamAttrs(description: string): Record<string, string>;
 
+/**
+ * DOM-based form tooling: derive a WebMCP input schema from a real
+ * `<form>` element and fill it back in from tool arguments.
+ *
+ * Because this inspects the rendered DOM (not the React element tree), it
+ * works with any UI library that ultimately renders native form controls —
+ * Material UI, Ant Design, shadcn/ui, portals, custom wrappers — without
+ * per-library adapters.
+ */
+
+/**
+ * Builds a JSON Schema describing a form's named controls, mirroring what
+ * the declarative WebMCP API synthesizes natively: control `name`s become
+ * properties, `required` controls become required properties, and
+ * `toolparamdescription` / `aria-label` / `<label for>` / `placeholder`
+ * provide descriptions. Hidden, file, button, and password controls are
+ * skipped (passwords must never reach an agent).
+ */
+declare function extractFormSchema(form: HTMLFormElement): JSONSchema;
+/**
+ * Fills a form's named controls from a tool-arguments object, dispatching
+ * the events React (and other frameworks) need to pick the values up.
+ * Returns the names of arguments that could not be applied.
+ */
+declare function applyArgsToForm(form: HTMLFormElement, args: Record<string, unknown>): string[];
+
 interface ToolFormProps extends Omit<FormHTMLAttributes<HTMLFormElement>, "toolname" | "tooldescription" | "toolautosubmit"> {
     /** Tool name registered for this form (declarative `toolname` attribute). */
     name: string;
@@ -257,6 +289,73 @@ interface ToolFormProps extends Omit<FormHTMLAttributes<HTMLFormElement>, "tooln
  * the extra attributes are simply ignored.
  */
 declare const ToolForm: react.ForwardRefExoticComponent<ToolFormProps & react.RefAttributes<HTMLFormElement>>;
+
+interface UseFormToolOptions {
+    /** Ref to the form element (any UI library that renders a native form). */
+    formRef: RefObject<HTMLFormElement | null>;
+    /** Unique, descriptive tool name. */
+    name: string;
+    /** Natural-language description the agent uses to pick the tool. */
+    description: string;
+    /**
+     * Submit the form (`requestSubmit()`) after filling it. Default `false`:
+     * the filled form is left for the user to review and submit — the same
+     * human-in-the-loop default as the declarative API's missing
+     * `toolautosubmit`.
+     */
+    autoSubmit?: boolean;
+    /**
+     * Handle the invocation yourself after the form has been filled, instead
+     * of submitting/focusing. Receives the parsed arguments; the return value
+     * is sent to the agent.
+     */
+    onToolCall?: (args: Record<string, unknown>, form: HTMLFormElement) => ToolExecuteResult | Promise<ToolExecuteResult>;
+    /** Behavioral hints for agents/browsers. */
+    annotations?: ToolAnnotations;
+    /** Set to `false` to unregister without unmounting. Default `true`. */
+    enabled?: boolean;
+}
+/**
+ * Registers an imperative WebMCP tool whose input schema is derived from a
+ * real, rendered `<form>` element in the DOM.
+ *
+ * Unlike React-tree adapters, this works with **any** component library that
+ * renders native form controls (Material UI, Ant Design, shadcn/ui, portals,
+ * custom wrappers): the schema comes from `form.elements` — control `name`s,
+ * `required`, types, `min`/`max`, select options, and descriptions from
+ * `toolparamdescription` / `aria-label` / `<label for>` / `placeholder`.
+ * Password, hidden, and file inputs are never exposed.
+ *
+ * When the agent calls the tool, the form is filled using native value
+ * setters + `input`/`change` events (so controlled React inputs update),
+ * then either submitted (`autoSubmit`), handled by `onToolCall`, or left
+ * focused for the user to review.
+ *
+ * The schema is captured when the form mounts (and when the definition or
+ * `enabled` changes). For forms whose fields change dynamically, call the
+ * returned `refresh()` after the change.
+ */
+declare function useFormTool(options: UseFormToolOptions): {
+    isRegistered: boolean;
+    /** Re-extracts the schema from the current DOM and re-registers. */
+    refresh: () => void;
+};
+
+/**
+ * Registers a batch of WebMCP tools for the lifetime of the component.
+ *
+ * Tools are registered **individually** (not via `provideContext`), so
+ * multiple components can each own a batch without clobbering each other's
+ * registrations. Definitions are compared by value, so inline arrays and
+ * object literals don't cause re-registration churn; each tool's `execute`
+ * stays fresh via a ref. Use the module-level `provideContext()` instead
+ * when you genuinely want to replace the page's entire toolset.
+ */
+declare function useWebMCPTools(tools: WebMCPTool[], options?: {
+    enabled?: boolean;
+}): {
+    isRegistered: boolean;
+};
 
 /**
  * Reports WebMCP availability in the current browser.
@@ -321,4 +420,4 @@ declare function useWebMCPTool<TArgs = Record<string, unknown>>(options: UseWebM
     isRegistered: boolean;
 };
 
-export { DEFAULT_MAX_RESULT_LENGTH, type JSONSchema, type ModelContext, type RegisterToolOptions, type ToolAnnotations, type ToolExecuteResult, ToolForm, type ToolFormProps, type ToolResponse, type ToolResponseContent, type UseWebMCPToolOptions, type WebMCPEventName, type WebMCPSubmitEvent, type WebMCPTool, getModelContext, isWebMCPSupported, jsonResult, normalizeResult, provideContext, registerTool, textResult, toolFormAttrs, toolParamAttrs, useWebMCP, useWebMCPEvent, useWebMCPTool };
+export { DEFAULT_MAX_RESULT_LENGTH, type JSONSchema, type ModelContext, type RegisterToolOptions, type ToolAnnotations, type ToolExecuteResult, ToolForm, type ToolFormProps, type ToolResponse, type ToolResponseContent, type UseFormToolOptions, type UseWebMCPToolOptions, type WebMCPEventName, type WebMCPSubmitEvent, type WebMCPTool, applyArgsToForm, extractFormSchema, getModelContext, isWebMCPSupported, isWebMCPTestingSupported, jsonResult, normalizeResult, provideContext, registerTool, textResult, toolFormAttrs, toolParamAttrs, useFormTool, useWebMCP, useWebMCPEvent, useWebMCPTool, useWebMCPTools };
