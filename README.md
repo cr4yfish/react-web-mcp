@@ -316,6 +316,17 @@ What you can do as a consumer:
 
 This package is used in production-style fashion by [genie-demo](https://github.com/cr4yfish/genie-demo) — see its `/test/webmcp` page for an end-to-end playground (support detection, imperative tools, declarative form, invocation log).
 
+## Bundled docs for coding agents
+
+This package ships a `doc/` folder **inside the published tarball** (it lands at
+`node_modules/@cr4yfish/react-web-mcp/doc/`). A coding agent working in a repo
+that depends on `react-web-mcp` can read these directly — no web access needed:
+
+- `doc/index.md` — overview, quick start, and the invariants worth knowing.
+- `doc/api-reference.md` — every export, with behavior notes.
+- `doc/webmcp-standard.md` — the WebMCP standard itself (imperative + declarative APIs, security, best practices, browser support).
+- `doc/llms.txt` — a one-read, machine-readable digest of the whole API surface.
+
 ## Agent skill
 
 Working on WebMCP with a coding agent (Claude Code, Cursor, Codex, …)? Install the [web-mcp-skill](https://github.com/cr4yfish/web-mcp-skill) — a framework-agnostic deep-dive WebMCP reference skill — via the [skills.sh CLI](https://www.skills.sh):
