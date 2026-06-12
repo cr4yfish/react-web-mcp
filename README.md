@@ -149,6 +149,7 @@ function ReservationForm() {
       name="book-table"
       description="Books a table at the restaurant. Asks for party size and a date."
       indicators
+      autoSubmit={false} // consequential action: opt into review-before-submit
       onAgentSubmit={async (data) => {
         const confirmation = await bookTable({
           partySize: Number(data.get("partySize")),
@@ -173,7 +174,7 @@ function ReservationForm() {
 ```
 
 - Renders a regular `<form>` with the declarative WebMCP attributes; the **browser** synthesizes the input schema from the form controls.
-- Without `autoSubmit`, the agent fills the form and the **user reviews and submits** — the human-in-the-loop default.
+- **`autoSubmit` defaults to `true`** (the agent submits the form itself), deliberately flipping the platform's human-in-the-loop default: in current Chromium, review mode keeps the invocation pending until the user submits, only one pending invocation per form is tracked, and a re-invoke drops the previous reply and closes the page's WebMCP channel — every tool dies silently until reload. Auto-submission answers immediately, so that state never exists. Opt into review mode per form with `autoSubmit={false}` for consequential actions (as above) — then keep `pendingTimeoutMs` and `indicators` on.
 - `onAgentSubmit` handles agent-invoked submissions without navigation: the default action is prevented and your return value is piped back to the agent via `SubmitEvent.respondWith()`. User submissions behave exactly as before.
 - `indicators` (opt-in) highlights the agent-filled/awaiting-review state: a small stylesheet is injected once per page, keyed on the native `:tool-form-active` / `:tool-submit-active` pseudo-classes plus a `data-webmcp-active="true"` attribute fallback the component maintains. Override the color with `--webmcp-indicator-color`, or skip the prop and style those selectors yourself (`WEBMCP_INDICATOR_CSS` is exported as a starting point).
 - `onPendingChange(pending)` observes the same state programmatically (e.g. to render a "review & submit" banner).
@@ -319,7 +320,7 @@ From [Chrome's guidance](https://developer.chrome.com/docs/ai/webmcp/best-practi
 2. **Validate inputs.** Treat tool arguments like any other untrusted user input — agents make mistakes and schemas are hints, not enforcement.
 3. **Keep outputs succinct and structured.** Return compact JSON, not HTML dumps. (`jsonResult` truncates oversized payloads for you.)
 4. **Return errors as information**, not exceptions — an agent can read `"No flights found for that date"` and try again. This package converts thrown errors into `isError` responses automatically.
-5. **Honor human-in-the-loop.** Mark read-only tools with `readOnlyHint`, destructive ones with `destructiveHint`; prefer review-before-submit forms (no `toolautosubmit`) for consequential actions.
+5. **Honor human-in-the-loop.** Mark read-only tools with `readOnlyHint`, destructive ones with `destructiveHint`; use review-before-submit forms (`autoSubmit={false}`) for consequential actions — knowing that in current Chromium a pending review invocation that gets re-invoked kills the page's tool channel, which is why `ToolForm` auto-submits by default.
 6. **Mind exposure.** Tools are visible to the page, same-origin frames, and the built-in browser agent by default. Only widen this with `exposedTo: [origins]` for origins you'd trust with the same data.
 7. **Treat agents as another client, not a trusted principal.** Anything a tool allows, assume it will be called with arbitrary arguments at arbitrary times.
 8. **Evaluate.** Use the [WebMCP evals CLI](https://github.com/GoogleChromeLabs/webmcp-tools/tree/main/evals-cli) and the Chrome DevTools **WebMCP panel** to test that real models pick the right tools with the right arguments.

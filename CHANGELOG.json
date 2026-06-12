@@ -5,6 +5,10 @@
     "released": false,
     "changes": [
       {
+        "type": "changed",
+        "text": "ToolForm autoSubmit now defaults to true (renders toolautosubmit), deliberately flipping the platform's human-in-the-loop default: review mode keeps the invocation pending until the user submits, Chromium tracks only one pending invocation per form, and a re-invoke drops the previous reply and closes the page's WebMCP channel — confirmed in practice to silently kill every tool until reload; opt back into review mode per form with autoSubmit={false} (keep pendingTimeoutMs and indicators on)"
+      },
+      {
         "type": "added",
         "text": "ROADMAP.json at the repo root, rendered automatically on the site like the changelog: milestone plan up to v1.0 (fully automatic conversion of React apps into WebMCP tool surfaces), statuses updated as releases land"
       },

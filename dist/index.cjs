@@ -719,7 +719,7 @@ var ToolForm = (0, import_react.forwardRef)(
   function ToolForm2({
     name,
     description,
-    autoSubmit,
+    autoSubmit = true,
     onAgentSubmit,
     onSubmit,
     indicators,

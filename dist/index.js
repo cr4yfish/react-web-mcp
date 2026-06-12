@@ -673,7 +673,7 @@ var ToolForm = forwardRef(
   function ToolForm2({
     name,
     description,
-    autoSubmit,
+    autoSubmit = true,
     onAgentSubmit,
     onSubmit,
     indicators,
