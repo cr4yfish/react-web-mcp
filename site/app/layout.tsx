@@ -3,14 +3,31 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "react-web-mcp — React hooks for WebMCP",
+  title: {
+    default: "react-web-mcp — React hooks for WebMCP",
+    template: "%s",
+  },
   description:
-    "Expose your React app's functionality as tools for in-browser AI agents. Zero dependencies, SSR-safe, spec-current WebMCP bindings for React and Next.js.",
+    "Make any web app agent-ready with WebMCP. React hooks (react-web-mcp) plus a framework-agnostic agent skill (web-mcp-skill) for vanilla JS, Vue, Svelte, and Angular. SSR-safe, zero dependencies, spec-current.",
   metadataBase: new URL("https://react-web-mcp.vercel.app"),
+  keywords: [
+    "WebMCP",
+    "Web Model Context Protocol",
+    "react-web-mcp",
+    "web-mcp-skill",
+    "agent skill",
+    "in-browser AI agents",
+    "MCP",
+    "React",
+    "vanilla JS",
+    "Vue",
+    "Svelte",
+    "Angular",
+  ],
   openGraph: {
-    title: "react-web-mcp — your React app, callable",
+    title: "WebMCP for React and every other framework",
     description:
-      "React hooks and components for the WebMCP standard. Make your app agent-ready in one hook.",
+      "react-web-mcp hooks for React, plus web-mcp-skill — one agent skill that teaches the whole WebMCP standard for any framework.",
     type: "website",
   },
 };

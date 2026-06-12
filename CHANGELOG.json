@@ -59,6 +59,10 @@
       {
         "type": "fixed",
         "text": "Site: pin the Vercel framework preset via site/vercel.json and document that Root Directory must be set to site/ (root builds fail with 'No Output Directory named public')"
+      },
+      {
+        "type": "added",
+        "text": "Site: dedicated /skill page and homepage promo for the framework-agnostic web-mcp-skill (npx skills add cr4yfish/web-mcp-skill), with a shared nav, dual-product footer, and updated metadata"
       }
     ]
   },
