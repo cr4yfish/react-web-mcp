@@ -9,7 +9,13 @@ React hooks/components for the **WebMCP** standard. Zero runtime dependencies, R
 - `pnpm tsc` — type-check (`--noEmit`)
 - `pnpm build` — tsup → `dist/` (ESM, CJS, `.d.ts`, sourcemaps)
 
-**`dist/` is committed on purpose** so the package installs straight from git (`github:cr4yfish/react-web-mcp`) until it's published to npm. If you touch anything in `src/`, run `pnpm build` and commit the updated `dist/` too.
+**`dist/` is committed on purpose** so the package installs straight from git (`github:cr4yfish/react-web-mcp`) until it's published to npm. If you touch anything in `src/`, run `pnpm build` and commit the updated `dist/` too — CI fails on a stale `dist/`.
+
+## CI & releasing
+
+- `.github/workflows/ci.yml` (push to main + PRs): `pnpm audit --audit-level=high`, type-check, tests, build, and a stale-`dist/` check.
+- `.github/workflows/publish.yml`: publishes to npm when a GitHub **release** is published. The release tag must be `v<version>` matching `package.json`. Needs the `NPM_TOKEN` repository secret (granular npm token with read/write on this package). Release flow: bump `version` in `package.json` → `pnpm build` → commit → tag `v<version>` → create the GitHub release. Add `--provenance` to the publish step once the repo is public.
+- Consumers vendoring the tarball (genie-demo): `pnpm pack` and copy the `.tgz` over (see genie-demo's `docs/webmcp-test-page.md`).
 
 ## Layout
 
