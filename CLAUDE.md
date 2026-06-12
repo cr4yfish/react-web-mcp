@@ -25,7 +25,7 @@ React hooks/components for the **WebMCP** standard. Zero runtime dependencies, R
 - `src/react/` — `useWebMCPTool`, `useWebMCPTools`, `useFormTool`, `useWebMCP`, `useWebMCPEvent`, `ToolForm`.
 - `src/index.ts` — main entry (gets a `"use client"` banner at build time); `src/vanilla.ts` — React-free entry (`@cr4yfish/react-web-mcp/vanilla`, no directive).
 - `tests/` — vitest suites + `mock-model-context.ts` (in-memory ModelContext mock).
-- `.claude/skills/webmcp/` — the deep-dive WebMCP skill. Read it before changing API surface.
+- `.claude/skills/webmcp/` — the deep-dive WebMCP skill. Read it before changing API surface. **Don't edit it here**: it's vendored from [cr4yfish/web-mcp-skill](https://github.com/cr4yfish/web-mcp-skill) via the [skills.sh CLI](https://github.com/vercel-labs/skills) (`skills-lock.json` tracks the source). Change it upstream, then re-import with `npx skills update`.
 
 ## Invariants — don't break these
 
