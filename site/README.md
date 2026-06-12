@@ -15,8 +15,8 @@ The package is consumed via `file:..` — the site always runs against the repo'
 ## Deploy on Vercel
 
 1. Import the GitHub repo in Vercel.
-2. Set **Root Directory** to `site`.
+2. **Set Root Directory to `site`** (Project Settings → General). This is required: with the repo root as Root Directory, Vercel builds the *package* (`tsup`) and fails with "No Output Directory named 'public' found".
 3. Keep **"Include source files outside of the Root Directory"** enabled (default) — required for the `file:..` dependency and the `CHANGELOG.json` import.
-4. Framework preset: Next.js. No env vars needed.
+4. Framework preset: Next.js (pinned via `site/vercel.json`). No env vars needed.
 
 To enable WebMCP for visitors on Chrome 149+ without the flag, register the production domain for the [WebMCP origin trial](https://developer.chrome.com/blog/ai-webmcp-origin-trial) and add the token as a `<meta httpEquiv="origin-trial">` tag in `app/layout.tsx`.
