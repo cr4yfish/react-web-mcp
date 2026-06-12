@@ -700,6 +700,7 @@ var ToolForm = forwardRef(
     name,
     description,
     autoSubmit = true,
+    reviewResponse = "immediate",
     onAgentSubmit,
     onSubmit,
     indicators,
@@ -714,12 +715,24 @@ var ToolForm = forwardRef(
     const pendingRef = useRef({ pending: false, since: 0, timer: null });
     const latest = useRef({
       name,
+      autoSubmit,
+      reviewResponse,
       pendingTimeoutMs,
       resetAfterAgentSubmit,
       onPendingChange,
       reinvokeGuard
     });
-    latest.current = { name, pendingTimeoutMs, resetAfterAgentSubmit, onPendingChange, reinvokeGuard };
+    latest.current = {
+      name,
+      autoSubmit,
+      reviewResponse,
+      pendingTimeoutMs,
+      resetAfterAgentSubmit,
+      onPendingChange,
+      reinvokeGuard
+    };
+    const isOnSubmitReview = () => !latest.current.autoSubmit && latest.current.reviewResponse === "on-submit";
+    const isImmediateReview = () => !latest.current.autoSubmit && latest.current.reviewResponse !== "on-submit";
     const setRefs = (node) => {
       formRef.current = node;
       if (typeof forwardedRef === "function") forwardedRef(node);
@@ -768,6 +781,7 @@ var ToolForm = forwardRef(
         }, timeout);
       }
       setTimeout(() => {
+        if (isImmediateReview()) return;
         const form = formRef.current;
         if (!form || !pendingRef.current.pending) return;
         try {
@@ -795,11 +809,11 @@ var ToolForm = forwardRef(
           }
         };
         if (!concernsThisForm(event, matchedByState)) return;
-        if (pendingRef.current.pending) {
+        if (pendingRef.current.pending && isOnSubmitReview()) {
           reportWebMCP({
             level: "error",
             code: "invocation-overlap",
-            message: "Tool was re-invoked while a previous invocation was still awaiting the user's submit, and the re-invoke guard did not catch the fill. Chromium keeps one pending invocation per form and DROPS the previous reply callback \u2014 this can close the page's WebMCP channel and silently disable every tool until reload. Keep reinvokeGuard and pendingTimeoutMs enabled, or use autoSubmit (the default) for low-stakes forms.",
+            message: `Tool was re-invoked while a previous invocation was still awaiting the user's submit, and the re-invoke guard did not catch the fill (a fill with identical values dispatches no events and is invisible to the page). Chromium keeps one pending invocation per form and DROPS the previous reply callback \u2014 this can close the page's WebMCP channel and silently disable every tool until reload. Prefer reviewResponse="immediate" (the default) or autoSubmit for low-stakes forms.`,
             toolName: latest.current.name,
             detail: { pendingSinceMs: Date.now() - pendingRef.current.since }
           });
@@ -807,11 +821,21 @@ var ToolForm = forwardRef(
           reportWebMCP({
             level: "info",
             code: "invocation-pending",
-            message: "Agent filled the form; awaiting the user's review submit (:tool-form-active is set).",
+            message: "Agent filled the form; awaiting the user's review submit.",
             toolName: latest.current.name
           });
         }
         beginPending();
+        if (isImmediateReview()) {
+          const form2 = formRef.current;
+          if (!form2) return;
+          let stillRunning = true;
+          try {
+            stillRunning = form2.matches(":tool-form-active");
+          } catch {
+          }
+          if (stillRunning) form2.requestSubmit();
+        }
       });
       const removeCanceled = addWebMCPEventListener("toolcanceled", (event) => {
         if (!concernsThisForm(event, () => pendingRef.current.pending)) return;
@@ -841,13 +865,11 @@ var ToolForm = forwardRef(
       let guardRestoring = false;
       const onGuardInput = (event) => {
         if (!latest.current.reinvokeGuard || guardRestoring) return;
+        if (!isOnSubmitReview()) return;
         if (!pendingRef.current.pending) return;
         const guardedForm = formRef.current;
         const target = event.target;
         if (!guardedForm || !(target instanceof Element)) return;
-        if (typeof InputEvent !== "undefined" && event instanceof InputEvent && event.inputType) {
-          return;
-        }
         if (target === guardedForm.ownerDocument.activeElement) return;
         const snapshot = snapshotFormControls(guardedForm);
         reportWebMCP({
@@ -910,10 +932,26 @@ var ToolForm = forwardRef(
           form.reportValidity?.();
           return;
         }
+        clearPending();
         onSubmit?.(event);
         return;
       }
       onSubmit?.(event);
+      if (!autoSubmit && reviewResponse !== "on-submit") {
+        if (!respondWith) return;
+        event.preventDefault();
+        const staged = textResult(
+          "Form filled out. The user must review and submit it manually."
+        );
+        reportWebMCP({
+          level: "info",
+          code: "agent-response",
+          message: `Invocation answered immediately with the staged review acknowledgement (reviewResponse: "immediate"); the user's review submit will complete as a normal form submission.`,
+          toolName: name
+        });
+        respondWith(Promise.resolve(staged));
+        return;
+      }
       if (!onAgentSubmit) {
         reportWebMCP({
           level: "warn",

@@ -189,12 +189,19 @@ synthesizes the input schema from the form controls.
 ```
 
 - **`autoSubmit` defaults to `true`** (the agent submits the form itself).
-  This deliberately flips the platform's human-in-the-loop default: review
-  mode keeps the invocation pending until the user submits, Chromium tracks
-  only one pending invocation per form, and a re-invoke drops the previous
-  reply and closes the page's WebMCP channel (every tool dies until reload).
-  Opt into review mode per form with `autoSubmit={false}` for consequential
-  actions, and keep `pendingTimeoutMs`/`indicators` on when you do.
+  This deliberately flips the platform's human-in-the-loop default because a
+  pending review invocation that gets re-invoked is dropped by Chromium and
+  the page's WebMCP channel closes (every tool dies until reload).
+- `reviewResponse?: "immediate" | "on-submit"` (default `"immediate"`) — how
+  review mode (`autoSubmit={false}`) answers the agent. `"immediate"` answers
+  every invocation right away with a staged "form filled, awaiting user
+  review" response (`useFormTool` semantics): nothing stays pending
+  browser-side, re-invokes are harmless, and the user's review submit
+  completes as a normal form submission (`onSubmit`; `onAgentSubmit` is not
+  called). `"on-submit"` is the platform-native flow — the invocation stays
+  pending and `onAgentSubmit` answers with the real result — protected by the
+  re-invoke guard + watchdog, but a re-invoke whose fill changes no values is
+  invisible to the page and can still kill the channel.
 - `onAgentSubmit(formData, event)` handles agent-invoked submissions without
   navigation: the default action is prevented and your return value is piped
   back to the agent via `SubmitEvent.respondWith()`. User submissions behave as
@@ -215,16 +222,19 @@ synthesizes the input schema from the form controls.
   and the channel stays healthy.
 - `onPendingChange?: (pending: boolean) => void` — observe the pending state
   (true from agent fill until answered/cancelled/reset).
-- `reinvokeGuard?: boolean` (default `true`) — automatic protection against
-  the re-invoke channel kill: a re-invocation's form fill dispatches `input`
+- `reinvokeGuard?: boolean` (default `true`; applies to
+  `reviewResponse="on-submit"` forms) — automatic protection against the
+  re-invoke channel kill: a re-invocation's form fill dispatches `input`
   events before the browser overwrites the old reply slot; the guard detects
-  the programmatic fill (non-user `input` event on an unfocused control while
-  a review is pending), snapshots all control values, `reset()`s the form so
-  the OLD invocation is answered with a proper "cancelled" error, restores
-  the values, and lets the new invocation proceed. Emits
-  `invocation-reinvoked` (warn). Caveat: a `reset`-event listener calling
-  `preventDefault()` defeats it; a misfire (e.g. browser autofill during a
-  pending review) costs only the pending invocation — values are preserved.
+  the fill (`input` event on an unfocused control while a review is pending),
+  snapshots all control values, `reset()`s the form so the OLD invocation is
+  answered with a proper "cancelled" error, restores the values, and lets the
+  new invocation proceed. Emits `invocation-reinvoked` (warn). Limits: a fill
+  that changes no control values dispatches no events and cannot be caught
+  (the `invocation-overlap` error then reports it); a `reset`-event listener
+  calling `preventDefault()` defeats it; a misfire (e.g. browser autofill
+  during a pending review) costs only the pending invocation — values are
+  preserved.
 - `resetAfterAgentSubmit?: boolean` — `reset()` the form one tick after an
   agent submission was answered (deferred so it cannot race the browser's
   response delivery).

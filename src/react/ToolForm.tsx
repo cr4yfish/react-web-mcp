@@ -55,12 +55,38 @@ export interface ToolFormProps
    * page cannot intercept that drop. Auto-submission answers each invocation
    * immediately, so the dangerous pending state never exists.
    *
-   * Set `autoSubmit={false}` only for consequential actions that genuinely
-   * need user review — keep `pendingTimeoutMs` enabled and turn on
-   * `indicators` so the user actually submits — and accept that a rapid
-   * re-invoke can still kill the page's tool channel.
+   * Set `autoSubmit={false}` for consequential actions that genuinely need
+   * user review. Review mode is channel-safe by default via
+   * {@link ToolFormProps.reviewResponse} (`"immediate"`): each invocation is
+   * answered right away with a staged "form filled, awaiting user review"
+   * response, so nothing is ever left pending browser-side.
    */
   autoSubmit?: boolean;
+  /**
+   * How review mode (`autoSubmit={false}`) answers the agent:
+   *
+   * - `"immediate"` (default): the invocation is answered **immediately**
+   *   with a staged `"Form filled out. The user must review and submit it
+   *   manually."` response — the same semantics as `useFormTool`. Nothing is
+   *   ever left pending browser-side, so the one-pending-invocation channel
+   *   kill (see {@link autoSubmit}) is structurally impossible; a double
+   *   invocation simply answers twice. The user's review submit then
+   *   completes as a **normal form submission** (`agentInvoked` is false;
+   *   handle it in `onSubmit`), and `onAgentSubmit` is not called. The
+   *   pending state exposed via `indicators`/`onPendingChange` remains until
+   *   the user submits or the form resets.
+   *
+   * - `"on-submit"`: the platform-native flow — the invocation stays pending
+   *   until the user submits, and the agent receives the real, user-approved
+   *   result via `onAgentSubmit`. Hazardous in current Chromium: a re-invoke
+   *   while pending drops the previous reply and can kill every WebMCP tool
+   *   on the page until reload. The re-invoke guard and `pendingTimeoutMs`
+   *   watchdog mitigate this, but a re-invoke whose fill changes **no**
+   *   control values (identical arguments) is invisible to the page and
+   *   cannot be intercepted. Use only when the agent truly needs the final
+   *   submitted data.
+   */
+  reviewResponse?: "immediate" | "on-submit";
   /**
    * Handles agent-invoked submissions without navigating: the default form
    * action is prevented and the handler's (possibly async) return value is
@@ -107,25 +133,30 @@ export interface ToolFormProps
    */
   onPendingChange?: (pending: boolean) => void;
   /**
-   * Automatic re-invoke guard for review-mode forms (default `true`).
+   * Automatic re-invoke guard for `reviewResponse="on-submit"` forms
+   * (default `true`; inert in the other modes, which are channel-safe by
+   * construction).
    *
    * When the agent re-invokes the tool while a previous invocation is still
    * awaiting the user's submit, Chromium drops the previous invocation's
    * reply and the page's WebMCP channel dies (see {@link autoSubmit}). The
    * guard exploits the one window the page gets: the new invocation's form
    * fill dispatches `input` events *before* the browser overwrites the old
-   * reply slot. On a high-confidence fill signal (a programmatic — non-user —
-   * `input` event on an unfocused control while a review is pending), the
-   * guard snapshots every control, calls `form.reset()` — which makes the
-   * browser answer the OLD invocation with a proper "cancelled" error,
-   * keeping the channel alive — and restores the values so the new fill
-   * completes intact. Emits an `invocation-reinvoked` warning diagnostic.
+   * reply slot. On a fill signal (an `input` event on an unfocused control
+   * while a review is pending — user interactions target the focused
+   * control), the guard snapshots every control, calls `form.reset()` —
+   * which makes the browser answer the OLD invocation with a proper
+   * "cancelled" error, keeping the channel alive — and restores the values
+   * so the new fill completes intact. Emits an `invocation-reinvoked`
+   * warning diagnostic.
    *
-   * Caveats: it must not be combined with a `reset`-event listener that
-   * calls `preventDefault()` (a cancelled reset skips the browser-side
-   * cancellation), and a misfire (e.g. browser autofill writing to unfocused
-   * controls during a pending review) costs only the pending invocation —
-   * values are preserved.
+   * Limits: a re-invoke whose fill changes no control values (identical
+   * arguments) dispatches no events and CANNOT be caught — the
+   * `invocation-overlap` error then reports the damage after the fact.
+   * Don't combine with a `reset`-event listener that calls
+   * `preventDefault()`. A misfire (e.g. browser autofill writing to
+   * unfocused controls during a pending review) costs only the pending
+   * invocation — values are preserved.
    */
   reinvokeGuard?: boolean;
   children?: ReactNode;
@@ -194,6 +225,7 @@ export const ToolForm = forwardRef<HTMLFormElement, ToolFormProps>(
       name,
       description,
       autoSubmit = true,
+      reviewResponse = "immediate",
       onAgentSubmit,
       onSubmit,
       indicators,
@@ -213,12 +245,29 @@ export const ToolForm = forwardRef<HTMLFormElement, ToolFormProps>(
     // never observe stale closures and never need to re-subscribe.
     const latest = useRef({
       name,
+      autoSubmit,
+      reviewResponse,
       pendingTimeoutMs,
       resetAfterAgentSubmit,
       onPendingChange,
       reinvokeGuard,
     });
-    latest.current = { name, pendingTimeoutMs, resetAfterAgentSubmit, onPendingChange, reinvokeGuard };
+    latest.current = {
+      name,
+      autoSubmit,
+      reviewResponse,
+      pendingTimeoutMs,
+      resetAfterAgentSubmit,
+      onPendingChange,
+      reinvokeGuard,
+    };
+
+    /** True when the browser-native pending-until-submit review flow is on. */
+    const isOnSubmitReview = () =>
+      !latest.current.autoSubmit && latest.current.reviewResponse === "on-submit";
+    /** True when review mode answers invocations immediately (staged ack). */
+    const isImmediateReview = () =>
+      !latest.current.autoSubmit && latest.current.reviewResponse !== "on-submit";
 
     const setRefs = (node: HTMLFormElement | null) => {
       formRef.current = node;
@@ -279,8 +328,11 @@ export const ToolForm = forwardRef<HTMLFormElement, ToolFormProps>(
       // Self-correct against the browser's ground truth: for `toolautosubmit`
       // forms the invocation may already be answered by the time
       // `toolactivated` reaches us (the submit happens synchronously during
-      // the fill, the event afterwards).
+      // the fill, the event afterwards). Not applicable in immediate review
+      // mode, where the staged answer clears `:tool-form-active` on purpose
+      // while our review state intentionally persists.
       setTimeout(() => {
+        if (isImmediateReview()) return;
         const form = formRef.current;
         if (!form || !pendingRef.current.pending) return;
         try {
@@ -315,16 +367,20 @@ export const ToolForm = forwardRef<HTMLFormElement, ToolFormProps>(
         };
         if (!concernsThisForm(event, matchedByState)) return;
 
-        if (pendingRef.current.pending) {
+        if (pendingRef.current.pending && isOnSubmitReview()) {
+          // Only the on-submit flow leaves a browser-side invocation that a
+          // re-invoke can clobber; in the other modes a repeat activation is
+          // harmless (the previous one was already answered).
           reportWebMCP({
             level: "error",
             code: "invocation-overlap",
             message:
               "Tool was re-invoked while a previous invocation was still awaiting the user's submit, " +
-              "and the re-invoke guard did not catch the fill. Chromium keeps one pending invocation " +
-              "per form and DROPS the previous reply callback — this can close the page's WebMCP " +
-              "channel and silently disable every tool until reload. Keep reinvokeGuard and " +
-              "pendingTimeoutMs enabled, or use autoSubmit (the default) for low-stakes forms.",
+              "and the re-invoke guard did not catch the fill (a fill with identical values dispatches " +
+              "no events and is invisible to the page). Chromium keeps one pending invocation per form " +
+              "and DROPS the previous reply callback — this can close the page's WebMCP channel and " +
+              "silently disable every tool until reload. Prefer reviewResponse=\"immediate\" (the " +
+              "default) or autoSubmit for low-stakes forms.",
             toolName: latest.current.name,
             detail: { pendingSinceMs: Date.now() - pendingRef.current.since },
           });
@@ -332,12 +388,28 @@ export const ToolForm = forwardRef<HTMLFormElement, ToolFormProps>(
           reportWebMCP({
             level: "info",
             code: "invocation-pending",
-            message:
-              "Agent filled the form; awaiting the user's review submit (:tool-form-active is set).",
+            message: "Agent filled the form; awaiting the user's review submit.",
             toolName: latest.current.name,
           });
         }
         beginPending();
+
+        // Immediate review mode: answer the invocation NOW with a staged
+        // acknowledgement, so nothing stays pending browser-side. The submit
+        // we request carries agentInvoked=true (the invocation is still
+        // running) and is answered in handleSubmit's staged path; the user's
+        // later real submit completes as a normal form submission.
+        if (isImmediateReview()) {
+          const form = formRef.current;
+          if (!form) return;
+          let stillRunning = true;
+          try {
+            stillRunning = form.matches(":tool-form-active");
+          } catch {
+            // Pseudo-class unsupported: assume the invocation is running.
+          }
+          if (stillRunning) form.requestSubmit();
+        }
       });
 
       const removeCanceled = addWebMCPEventListener("toolcanceled", (event) => {
@@ -378,16 +450,15 @@ export const ToolForm = forwardRef<HTMLFormElement, ToolFormProps>(
       let guardRestoring = false;
       const onGuardInput = (event: Event) => {
         if (!latest.current.reinvokeGuard || guardRestoring) return;
+        // Only the on-submit flow has a browser-side pending reply to rescue.
+        if (!isOnSubmitReview()) return;
         if (!pendingRef.current.pending) return;
         const guardedForm = formRef.current;
         const target = event.target;
         if (!guardedForm || !(target instanceof Element)) return;
-        // Definite user keystroke: real typing always carries an inputType.
-        if (typeof InputEvent !== "undefined" && event instanceof InputEvent && event.inputType) {
-          return;
-        }
-        // User-driven changes happen on the focused control; the agent's
-        // fill writes to controls regardless of focus.
+        // User-driven changes (typing, picking, clicking) happen on the
+        // focused control; the agent's fill writes to controls regardless of
+        // focus (the submit button holds focus during a pending review).
         if (target === guardedForm.ownerDocument.activeElement) return;
 
         const snapshot = snapshotFormControls(guardedForm);
@@ -477,6 +548,9 @@ export const ToolForm = forwardRef<HTMLFormElement, ToolFormProps>(
           form.reportValidity?.();
           return;
         }
+        // A human submit completes any review in progress (in immediate
+        // review mode the invocation itself was already answered).
+        clearPending();
         onSubmit?.(event);
         return;
       }
@@ -488,6 +562,31 @@ export const ToolForm = forwardRef<HTMLFormElement, ToolFormProps>(
       // hanging, which poisons the page's message channel and silences every
       // later tool call.
       onSubmit?.(event);
+
+      // Immediate review mode: this agent submit is the staged
+      // acknowledgement requested from the toolactivated handler. Answer
+      // with the staged message (the data is not final — the user has not
+      // reviewed it), keep the review state visible, and leave the form
+      // values alone for the user.
+      if (!autoSubmit && reviewResponse !== "on-submit") {
+        if (!respondWith) return; // narrows the type; isAgentSubmit implies it
+        event.preventDefault();
+        const staged = textResult(
+          "Form filled out. The user must review and submit it manually.",
+        );
+        reportWebMCP({
+          level: "info",
+          code: "agent-response",
+          message:
+            "Invocation answered immediately with the staged review acknowledgement " +
+            '(reviewResponse: "immediate"); the user\'s review submit will complete as a normal ' +
+            "form submission.",
+          toolName: name,
+        });
+        respondWith(Promise.resolve(staged));
+        return;
+      }
+
       if (!onAgentSubmit) {
         reportWebMCP({
           level: "warn",
