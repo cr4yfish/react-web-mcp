@@ -1,6 +1,6 @@
 [
   {
-    "version": "0.3.4",
+    "version": "0.3.5",
     "date": "2026-06-12",
     "released": false,
     "changes": [
@@ -9,8 +9,19 @@
         "text": "Review mode (autoSubmit={false}) is channel-safe by default: the new reviewResponse option ('immediate' by default) answers every invocation right away with a staged 'Form filled out. The user must review and submit it manually.' response (useFormTool semantics), so nothing ever stays pending browser-side and a double invocation simply answers twice; the user's review submit then completes as a normal form submission (onSubmit, agentInvoked=false). The platform-native pending-until-submit flow is opt-in via reviewResponse='on-submit' when the agent needs the final submitted data"
       },
       {
+        "type": "changed",
+        "text": "Re-invoke guard is now scoped to reviewResponse='on-submit' forms (the other modes are channel-safe by construction) and treats any input event on an unfocused control as a fill regardless of event class (user interactions always target the focused control); its hard limit is documented — a re-invoke whose fill changes no control values dispatches no events and cannot be caught, which is why 'immediate' is the review default"
+      }
+    ]
+  },
+  {
+    "version": "0.3.4",
+    "date": "2026-06-12",
+    "released": true,
+    "changes": [
+      {
         "type": "added",
-        "text": "Re-invoke guard on ToolForm (reinvokeGuard, default true; applies to reviewResponse='on-submit' forms): when the agent re-invokes the tool while an invocation is still pending, the guard intercepts the new fill's input events — the one window before Chromium drops the old reply — snapshots all control values, cancels the old invocation cleanly via form.reset(), restores the values, and lets the new invocation proceed; the channel-killing callback drop can no longer happen, and an invocation-reinvoked warning diagnostic is emitted; note a re-invoke whose fill changes no control values dispatches no events and cannot be caught — prefer the immediate review default"
+        "text": "Re-invoke guard on ToolForm (reinvokeGuard, default true): when the agent re-invokes a review-mode tool while an invocation is still pending, the guard intercepts the new fill's input events — the one window before Chromium drops the old reply — snapshots all control values, cancels the old invocation cleanly via form.reset(), restores the values, and lets the new invocation proceed; the channel-killing callback drop can no longer happen, and an invocation-reinvoked warning diagnostic is emitted"
       }
     ]
   },
