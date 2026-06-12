@@ -1,0 +1,31 @@
+[
+  {
+    "version": "0.2.0",
+    "date": "2026-06-12",
+    "released": false,
+    "changes": [
+      { "type": "added", "text": "useFormTool: register a tool whose input schema is derived from the rendered DOM form — works with MUI, AntD, shadcn/ui, portals, any library that renders native controls" },
+      { "type": "added", "text": "extractFormSchema / applyArgsToForm DOM primitives (agent-driven form filling with native setters + input/change events)" },
+      { "type": "added", "text": "useWebMCPTools: composable batch registration (individual registrations, not provideContext)" },
+      { "type": "added", "text": "isWebMCPTestingSupported(): detects the #enable-webmcp-testing flag / Model Context Tool Inspector API" },
+      { "type": "added", "text": "Dev-mode validation in registerTool/provideContext: empty names/descriptions and non-serializable schemas throw in development, degrade to console + no-op in production" },
+      { "type": "added", "text": "Documentation site in site/ (Next.js + shadcn + motion), deployable on Vercel; dogfoods the package with live tools and renders this changelog" },
+      { "type": "added", "text": "CHANGELOG.json policy: every change must ship with an entry (enforced via CLAUDE.md), consumed by the site automatically" },
+      { "type": "changed", "text": "GitHub Actions bumped to v6 (Node 24 runners)" },
+      { "type": "fixed", "text": "TypeScript 6 dts build (ignoreDeprecations for tsup-injected baseUrl)" }
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "date": "2026-06-12",
+    "released": true,
+    "changes": [
+      { "type": "added", "text": "Initial release as @cr4yfish/react-web-mcp (renamed from react-web-mcp: npm typosquat protection vs. existing react-webmcp)" },
+      { "type": "added", "text": "useWebMCPTool, useWebMCP, useWebMCPEvent hooks with SSR safety, ref-fresh execute, and definition-keyed re-registration" },
+      { "type": "added", "text": "ToolForm declarative component (toolname/tooldescription attributes, respondWith handling) + toolFormAttrs/toolParamAttrs helpers and JSX typings" },
+      { "type": "added", "text": "Framework-agnostic core (registerTool, provideContext, textResult, jsonResult with 50k truncation, error-to-isError normalization) via @cr4yfish/react-web-mcp/vanilla" },
+      { "type": "added", "text": "document.modelContext (Chrome 150+ spec surface) with navigator.modelContext fallback" },
+      { "type": "added", "text": "CI (audit, type-check, tests, build, stale-dist check) and npm publish workflow" }
+    ]
+  }
+]
