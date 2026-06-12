@@ -3,7 +3,7 @@
 React hooks and components for **WebMCP** — the emerging web standard that lets your web app expose its functionality as *tools* that in-browser AI agents (like Gemini in Chrome) can discover and call.
 
 ```tsx
-import { useWebMCPTool } from "react-web-mcp";
+import { useWebMCPTool } from "@cr4yfish/react-web-mcp";
 
 function TodoList() {
   const [todos, setTodos] = useState<string[]>([]);
@@ -67,9 +67,9 @@ Using WebMCP from raw React means hand-rolling the same plumbing in every app:
 ## Installation
 
 ```bash
-npm install react-web-mcp
+npm install @cr4yfish/react-web-mcp
 # or
-pnpm add react-web-mcp
+pnpm add @cr4yfish/react-web-mcp
 ```
 
 Requires React 18+. Works in Vite, CRA, Remix, and Next.js (App Router and Pages Router — the main entry ships a `"use client"` directive).
@@ -79,7 +79,7 @@ Requires React 18+. Works in Vite, CRA, Remix, and Next.js (App Router and Pages
 ### Check for support: `useWebMCP`
 
 ```tsx
-import { useWebMCP } from "react-web-mcp";
+import { useWebMCP } from "@cr4yfish/react-web-mcp";
 
 function AgentBadge() {
   const { isSupported } = useWebMCP();
@@ -93,7 +93,7 @@ SSR-safe: returns `false` on the server and during hydration, the real value aft
 ### Register a tool: `useWebMCPTool`
 
 ```tsx
-import { useWebMCPTool } from "react-web-mcp";
+import { useWebMCPTool } from "@cr4yfish/react-web-mcp";
 
 function ProductSearch({ category }: { category: string }) {
   const [results, setResults] = useState<Product[]>([]);
@@ -135,7 +135,7 @@ Behavior:
 ### Declarative forms: `ToolForm`
 
 ```tsx
-import { ToolForm, toolParamAttrs } from "react-web-mcp";
+import { ToolForm, toolParamAttrs } from "@cr4yfish/react-web-mcp";
 
 function ReservationForm() {
   return (
@@ -173,7 +173,7 @@ function ReservationForm() {
 Prefer to keep your own `<form>`? Use the attribute helpers (TypeScript JSX types for `toolname` etc. are included):
 
 ```tsx
-import { toolFormAttrs, toolParamAttrs } from "react-web-mcp";
+import { toolFormAttrs, toolParamAttrs } from "@cr4yfish/react-web-mcp";
 
 <form {...toolFormAttrs({ name: "search", description: "Search the site", autoSubmit: true })}>
   <input name="q" required {...toolParamAttrs("The search query")} />
@@ -183,7 +183,7 @@ import { toolFormAttrs, toolParamAttrs } from "react-web-mcp";
 ### React to agent activity: `useWebMCPEvent`
 
 ```tsx
-import { useWebMCPEvent } from "react-web-mcp";
+import { useWebMCPEvent } from "@cr4yfish/react-web-mcp";
 
 useWebMCPEvent("toolactivated", () => {
   // e.g. scroll a filled-out form into view for user review
@@ -196,12 +196,12 @@ useWebMCPEvent("toolchange", () => {
 });
 ```
 
-### Outside React: `react-web-mcp/vanilla`
+### Outside React: `@cr4yfish/react-web-mcp/vanilla`
 
 A React-free entry point, safe to import from server components and plain scripts:
 
 ```ts
-import { registerTool, provideContext, isWebMCPSupported } from "react-web-mcp/vanilla";
+import { registerTool, provideContext, isWebMCPSupported } from "@cr4yfish/react-web-mcp/vanilla";
 
 const unregister = registerTool({
   name: "get-cart",

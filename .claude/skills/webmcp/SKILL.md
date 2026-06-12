@@ -178,8 +178,8 @@ They compose: many products ship backend MCP for server operations *and* WebMCP 
 
 ```tsx
 import { useWebMCP, useWebMCPTool, useWebMCPEvent, ToolForm,
-         toolFormAttrs, toolParamAttrs } from "react-web-mcp";
-import { registerTool, provideContext } from "react-web-mcp/vanilla"; // React-free / RSC-safe
+         toolFormAttrs, toolParamAttrs } from "@cr4yfish/react-web-mcp";
+import { registerTool, provideContext } from "@cr4yfish/react-web-mcp/vanilla"; // React-free / RSC-safe
 ```
 
 - `useWebMCPTool({ name, description, inputSchema?, outputSchema?, annotations?, exposedTo?, enabled?, execute })` — registers for the component lifetime; `execute` sees fresh closures without re-registration (ref-based); definition changes (deep-compared via JSON) re-register; `enabled:false` unregisters in place. Returns `{ isRegistered }`.
