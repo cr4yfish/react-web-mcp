@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Audit, type-check, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Security audit
+        # Fails the build on high/critical advisories (incl. dev deps).
+        run: pnpm audit --audit-level=high
+
+      - name: Type-check
+        run: pnpm tsc
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Verify committed dist is up to date
+        # dist/ is committed so the package installs from git pre-npm.
+        # Sourcemaps embed absolute-ish paths, so compare only the code/dts.
+        run: |
+          if ! git diff --exit-code -- 'dist/*.js' 'dist/*.cjs' 'dist/*.d.ts' 'dist/*.d.cts'; then
+            echo "::error::dist/ is stale. Run 'pnpm build' and commit the result."
+            exit 1
+          fi
