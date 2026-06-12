@@ -2,5 +2,7 @@
 # the repo root's pnpm-workspace.yaml. The package itself is consumed via
 # the file:.. dependency, not a pnpm workspace link.
 
+# The site renders no images (all CSS/SVG), so sharp's native build script
+# isn't needed — prebuilt binaries from its optional deps suffice.
 allowBuilds:
-  sharp: set this to true or false
+  sharp: false
