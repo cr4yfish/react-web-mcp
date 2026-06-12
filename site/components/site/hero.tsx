@@ -1,10 +1,8 @@
 "use client";
 
-import { useWebMCP } from "@cr4yfish/react-web-mcp";
 import { Check, Copy, Github } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AgentTerminal } from "./agent-terminal";
 
@@ -16,7 +14,6 @@ const fadeUp = {
 };
 
 export function Hero() {
-  const { isSupported } = useWebMCP();
   const [copied, setCopied] = useState(false);
 
   const copy = async () => {
@@ -33,21 +30,10 @@ export function Hero() {
     <section className="bg-grid relative overflow-hidden">
       <div className="mx-auto grid max-w-6xl gap-12 px-6 pb-20 pt-24 lg:grid-cols-2 lg:items-center lg:pt-32">
         <div>
-          <motion.div {...fadeUp} transition={{ duration: 0.5 }}>
-            <Badge variant={isSupported ? "success" : "outline"}>
-              <span
-                className={`size-1.5 rounded-full ${isSupported ? "animate-pulse bg-primary" : "bg-muted-foreground"}`}
-              />
-              {isSupported
-                ? "WebMCP detected — this page is agent-ready"
-                : "WebMCP: Chrome 146+ · chrome://flags/#enable-webmcp-testing"}
-            </Badge>
-          </motion.div>
-
           <motion.h1
             {...fadeUp}
             transition={{ duration: 0.5, delay: 0.08 }}
-            className="mt-6 text-5xl font-semibold tracking-tight sm:text-6xl"
+            className="text-5xl font-semibold tracking-tight sm:text-6xl"
           >
             Your React app,
             <br />
@@ -57,12 +43,12 @@ export function Hero() {
           <motion.p
             {...fadeUp}
             transition={{ duration: 0.5, delay: 0.16 }}
-            className="mt-5 max-w-md text-balance text-muted-foreground"
+            className="mt-5 max-w-md text-balance text-lg text-foreground/85"
           >
             React hooks for{" "}
             <a
               href="https://developer.chrome.com/docs/ai/webmcp"
-              className="underline decoration-border underline-offset-4 hover:text-foreground"
+              className="text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary"
             >
               WebMCP
             </a>

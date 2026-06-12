@@ -35,7 +35,8 @@
   --secondary: oklch(0.22 0.015 260);
   --secondary-foreground: oklch(0.93 0.005 260);
   --muted: oklch(0.2 0.012 260);
-  --muted-foreground: oklch(0.62 0.01 260);
+  /* ~0.72 keeps secondary copy comfortably above 4.5:1 on the dark bg. */
+  --muted-foreground: oklch(0.72 0.012 260);
   --accent: oklch(0.24 0.02 260);
   --accent-foreground: oklch(0.93 0.005 260);
   --border: oklch(0.26 0.012 260);

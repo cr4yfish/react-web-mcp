@@ -12,7 +12,8 @@
       { "type": "added", "text": "Documentation site in site/ (Next.js + shadcn + motion), deployable on Vercel; dogfoods the package with live tools and renders this changelog" },
       { "type": "added", "text": "CHANGELOG.json policy: every change must ship with an entry (enforced via CLAUDE.md), consumed by the site automatically" },
       { "type": "changed", "text": "GitHub Actions bumped to v6 (Node 24 runners)" },
-      { "type": "fixed", "text": "TypeScript 6 dts build (ignoreDeprecations for tsup-injected baseUrl)" }
+      { "type": "fixed", "text": "TypeScript 6 dts build (ignoreDeprecations for tsup-injected baseUrl)" },
+      { "type": "fixed", "text": "Site: readable hero subtitle (higher-contrast secondary text) and pinned Turbopack workspace root to silence the multi-lockfile warning" }
     ]
   },
   {
