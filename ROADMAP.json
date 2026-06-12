@@ -1,0 +1,68 @@
+[
+  {
+    "version": "0.4.0",
+    "title": "Zero-boilerplate tools",
+    "status": "in-progress",
+    "items": [
+      "Auto form tools: one page-level hook discovers every rendered form and registers a tool per form (schema, name, and description derived from labels, headings, and aria attributes)",
+      "Action tools from interactive elements: derive simple no-input tools from buttons and links with accessible names",
+      "Dev overlay listing the page's registered tools, their schemas, and recent invocations live"
+    ]
+  },
+  {
+    "version": "0.5.0",
+    "title": "App-aware automation",
+    "status": "planned",
+    "items": [
+      "Router adapters (Next.js App Router, React Router): navigation tools synthesized from the route table",
+      "Automatic page context: provideContext fed from headings, landmarks, and visible state so agents know where they are",
+      "Per-route tool scoping: tools register and unregister automatically as the user navigates"
+    ]
+  },
+  {
+    "version": "0.6.0",
+    "title": "Whole-page discovery",
+    "status": "planned",
+    "items": [
+      "Runtime scanner that finds interactive surfaces beyond forms — search inputs, filters, pagination, dialogs, tables — and synthesizes tools with confidence scores",
+      "Allow/deny configuration and sensitive-surface heuristics so discovery stays opt-out granular and safe by default"
+    ]
+  },
+  {
+    "version": "0.7.0",
+    "title": "Codegen CLI",
+    "status": "planned",
+    "items": [
+      "npx react-web-mcp generate: statically analyze a React codebase and emit explicit useWebMCPTool/useFormTool registrations as reviewable code (codemods, not runtime magic)",
+      "Generated tools carry descriptions inferred from component names, props, and JSDoc, editable before commit"
+    ]
+  },
+  {
+    "version": "0.8.0",
+    "title": "Eval-driven quality",
+    "status": "planned",
+    "items": [
+      "First-class integration with the webmcp-tools evals CLI: score every auto-generated tool against agent task completion",
+      "Regeneration loop: low-scoring tools get better names, descriptions, and schemas suggested automatically"
+    ]
+  },
+  {
+    "version": "0.9.0",
+    "title": "Hardening & API freeze",
+    "status": "planned",
+    "items": [
+      "Security pass over all automation: sensitive-field redaction, destructive-action annotations, human-in-the-loop confirmation everywhere",
+      "Performance budget for scanners and registration churn; public API frozen as a 1.0 release candidate"
+    ]
+  },
+  {
+    "version": "1.0.0",
+    "title": "Fully automatic conversion",
+    "status": "planned",
+    "items": [
+      "One drop-in — a single provider component or a single CLI command — converts an existing React app into a complete WebMCP tool surface with no per-tool code",
+      "Runtime discovery, codegen, and eval-driven refinement combined: every meaningful user action exposed as a well-described, validated, safe tool",
+      "Stable semver, published on npm with provenance"
+    ]
+  }
+]

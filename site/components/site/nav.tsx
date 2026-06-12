@@ -8,6 +8,7 @@ const LINKS = [
   { label: "React", href: "/" },
   { label: "Skill", href: "/skill" },
   { label: "Demo", href: "/#demo" },
+  { label: "Roadmap", href: "/#roadmap" },
 ];
 
 // Shared header so the site reads as dual-product: the react-web-mcp package
