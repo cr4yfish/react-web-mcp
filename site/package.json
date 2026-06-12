@@ -1,0 +1,31 @@
+{
+  "name": "react-web-mcp-site",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "tsc": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cr4yfish/react-web-mcp": "file:..",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@radix-ui/react-tabs": "^1.1.14",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.560.0",
+    "motion": "^12.30.0",
+    "next": "^16.2.7",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "tailwind-merge": "^3.4.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.17",
+    "tailwindcss": "^4.2.0",
+    "typescript": "^5.9.0"
+  }
+}

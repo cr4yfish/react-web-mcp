@@ -11,6 +11,19 @@ React hooks/components for the **WebMCP** standard. Zero runtime dependencies, R
 
 **`dist/` is committed on purpose** so the package installs straight from git (`github:cr4yfish/react-web-mcp`) until it's published to npm. If you touch anything in `src/`, run `pnpm build` and commit the updated `dist/` too — CI fails on a stale `dist/`.
 
+## Changelog — mandatory
+
+Every change to this repo (features, fixes, docs, CI, site) **must** land together with an entry in `CHANGELOG.json` at the repo root. No exceptions — the site imports this file and renders it automatically, so an unlogged change is an invisible change.
+
+Format (newest version first):
+
+```json
+{ "version": "0.2.0", "date": "YYYY-MM-DD", "released": false,
+  "changes": [ { "type": "added" | "changed" | "fixed" | "removed" | "security", "text": "…" } ] }
+```
+
+Rules: append `changes` entries to the current unreleased version block (create the next semver block with `"released": false` if none exists); set `"released": true` when that version is published to npm; keep entries one terse sentence each; never rewrite history of released versions.
+
 ## CI & releasing
 
 - `.github/workflows/ci.yml` (push to main + PRs): `pnpm audit --audit-level=high`, type-check, tests, build, and a stale-`dist/` check.
