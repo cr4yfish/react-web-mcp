@@ -148,6 +148,7 @@ function ReservationForm() {
     <ToolForm
       name="book-table"
       description="Books a table at the restaurant. Asks for party size and a date."
+      indicators
       onAgentSubmit={async (data) => {
         const confirmation = await bookTable({
           partySize: Number(data.get("partySize")),
@@ -172,8 +173,12 @@ function ReservationForm() {
 ```
 
 - Renders a regular `<form>` with the declarative WebMCP attributes; the **browser** synthesizes the input schema from the form controls.
-- Without `autoSubmit`, the agent fills the form and the **user reviews and submits** — the human-in-the-loop default. Style that state with the `:tool-form-active` / `:tool-submit-active` CSS pseudo-classes.
+- Without `autoSubmit`, the agent fills the form and the **user reviews and submits** — the human-in-the-loop default.
 - `onAgentSubmit` handles agent-invoked submissions without navigation: the default action is prevented and your return value is piped back to the agent via `SubmitEvent.respondWith()`. User submissions behave exactly as before.
+- `indicators` (opt-in) highlights the agent-filled/awaiting-review state: a small stylesheet is injected once per page, keyed on the native `:tool-form-active` / `:tool-submit-active` pseudo-classes plus a `data-webmcp-active="true"` attribute fallback the component maintains. Override the color with `--webmcp-indicator-color`, or skip the prop and style those selectors yourself (`WEBMCP_INDICATOR_CSS` is exported as a starting point).
+- `onPendingChange(pending)` observes the same state programmatically (e.g. to render a "review & submit" banner).
+- **Lifecycle safety (important):** Chromium keeps exactly **one pending invocation per form**. If the tool is invoked again while a previous invocation still awaits the user's submit, the browser silently drops the older invocation's reply callback — which can close the page's WebMCP channel and disable *every* tool until reload. `ToolForm` defends against this: `pendingTimeoutMs` (default 2 minutes, `0` disables) auto-cancels a stale invocation via `form.reset()` — the sanctioned page-side cancel that returns a proper "cancelled" error to the agent and keeps the channel healthy — and an overlapping invocation is reported as a loud `invocation-overlap` error diagnostic.
+- `resetAfterAgentSubmit` resets the form one tick after an agent submission was answered, so the next invocation starts from a clean slate.
 - In browsers without WebMCP it's just a normal form.
 
 Prefer to keep your own `<form>`? Use the attribute helpers (TypeScript JSX types for `toolname` etc. are included):
@@ -246,6 +251,25 @@ useWebMCPEvent("toolchange", () => {
 });
 ```
 
+These handlers fire in real Chrome: Chromium dispatches `toolactivated` and the cancel event at the **window** (not the ModelContext object) and names the cancel event `toolcancel` — the hook listens on both targets and both spellings, deduped, so you don't have to care. The event's `toolName` property (when present) names the tool concerned. Outside React, the same plumbing is available as `addWebMCPEventListener(name, handler)`.
+
+### Never fail silently: verbose mode & diagnostics
+
+Everything the package observes — registrations, agent invocations, responses, validation rejections, cancelled or overlapping invocations, truncated results — flows through a single diagnostics stream. Errors and warnings always reach the console; info-level lifecycle logs appear when verbose mode is on:
+
+```tsx
+import { setWebMCPVerbose, onWebMCPDiagnostic } from "@cr4yfish/react-web-mcp";
+
+setWebMCPVerbose(true); // e.g. on your /test page or behind a debug flag
+
+// Mirror everything into your own UI (all levels, regardless of verbose):
+const unsubscribe = onWebMCPDiagnostic(({ level, code, toolName, message }) => {
+  appendToDebugLog(`[${level}] ${code} ${toolName ?? ""}: ${message}`);
+});
+```
+
+Diagnostic codes worth alerting on: `invocation-overlap` (a declarative form tool was re-invoked while a previous invocation was pending — see the lifecycle-safety note above), `invocation-timeout` (the watchdog cancelled a stale invocation), `respondwith-missing`, `agent-response-error`, `register-failed`.
+
 ### Outside React: `@cr4yfish/react-web-mcp/vanilla`
 
 A React-free entry point, safe to import from server components and plain scripts:
@@ -272,8 +296,12 @@ const clear = provideContext([toolA, toolB, toolC]);
 | `useWebMCPTools(tools, options?)` | hook | Register a batch of tools (individually, composable) |
 | `useFormTool(options)` | hook | Tool with a schema derived from a rendered `<form>` (works with MUI/AntD/any library) |
 | `useWebMCP()` | hook | `{ isSupported, modelContext }` |
-| `useWebMCPEvent(name, handler)` | hook | Subscribe to `toolchange` / `toolactivated` / `toolcanceled` |
-| `ToolForm` | component | `<form>` registered as a declarative tool, with `onAgentSubmit` |
+| `useWebMCPEvent(name, handler)` | hook | Subscribe to `toolchange` / `toolactivated` / `toolcanceled` (window + ModelContext targets, `toolcancel` alias) |
+| `ToolForm` | component | `<form>` registered as a declarative tool: `onAgentSubmit`, `indicators`, `pendingTimeoutMs` watchdog, `onPendingChange`, `resetAfterAgentSubmit` |
+| `setWebMCPVerbose(on)` / `isWebMCPVerbose()` | function | Toggle verbose lifecycle logging (`[webmcp]` console prefix) |
+| `onWebMCPDiagnostic(listener)` | function | Subscribe to every diagnostic the package emits; returns unsubscribe |
+| `addWebMCPEventListener(name, handler)` | function | Framework-agnostic event subscription (same plumbing as `useWebMCPEvent`) |
+| `injectWebMCPIndicatorStyles()` / `WEBMCP_INDICATOR_CSS` | function/const | Default visual-indicator stylesheet for agent-filled forms |
 | `registerTool(tool, options?)` | function | Framework-agnostic registration; returns `unregister()` |
 | `provideContext(tools)` | function | Replace the page's whole toolset; returns `unregister()` |
 | `getModelContext()` / `isWebMCPSupported()` | function | Feature detection (SSR-safe) |

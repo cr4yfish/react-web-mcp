@@ -1,3 +1,40 @@
+// src/debug.ts
+var verbose = false;
+var listeners = /* @__PURE__ */ new Set();
+function setWebMCPVerbose(enabled) {
+  verbose = enabled;
+}
+function isWebMCPVerbose() {
+  return verbose;
+}
+function onWebMCPDiagnostic(listener) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+function reportWebMCP(diagnostic) {
+  for (const listener of listeners) {
+    try {
+      listener(diagnostic);
+    } catch {
+    }
+  }
+  if (typeof console === "undefined") return;
+  const tag = diagnostic.toolName ? `[webmcp:${diagnostic.toolName}]` : "[webmcp]";
+  const args = diagnostic.detail === void 0 ? [`${tag} ${diagnostic.message}`] : [`${tag} ${diagnostic.message}`, diagnostic.detail];
+  if (diagnostic.level === "error") {
+    console.error(...args);
+  } else if (diagnostic.level === "warn") {
+    console.warn(...args);
+  } else if (verbose) {
+    console.info(...args);
+  }
+}
+function clipDiagnosticText(text, maxLength = 400) {
+  return text.length > maxLength ? `${text.slice(0, maxLength)}\u2026 [+${text.length - maxLength} chars]` : text;
+}
+
 // src/validate.ts
 var SKIP_KEYWORDS = ["$ref", "anyOf", "oneOf", "allOf", "not", "if"];
 function isPlainObject(value) {
@@ -176,7 +213,7 @@ function validateTool(tool) {
   if (typeof process !== "undefined" && process.env?.NODE_ENV !== "production") {
     throw new TypeError(`WebMCP: ${problem}`);
   }
-  reportError(`WebMCP: ${problem}`, void 0);
+  reportWebMCP({ level: "error", code: "invalid-definition", message: problem });
   return false;
 }
 function textResult(text, isError = false) {
@@ -190,6 +227,11 @@ function jsonResult(value, maxLength = DEFAULT_MAX_RESULT_LENGTH) {
     return textResult("Error: tool result could not be serialized to JSON.", true);
   }
   if (maxLength > 0 && text.length > maxLength) {
+    reportWebMCP({
+      level: "warn",
+      code: "result-truncated",
+      message: `Tool result truncated from ${text.length} to ${maxLength} characters.`
+    });
     text = `${text.slice(0, maxLength)}\u2026 [truncated ${text.length - maxLength} characters]`;
   }
   return { content: [{ type: "text", text }] };
@@ -211,9 +253,22 @@ function wrapExecute(tool) {
   return {
     ...descriptor,
     async execute(args) {
+      reportWebMCP({
+        level: "info",
+        code: "execute",
+        message: "Tool invoked by an agent.",
+        toolName: tool.name,
+        detail: isWebMCPVerbose() ? args : void 0
+      });
       if (validateInput) {
         const problems = validateToolInput(args, tool.inputSchema);
         if (problems.length > 0) {
+          reportWebMCP({
+            level: "warn",
+            code: "invalid-arguments",
+            message: `Rejected agent call with invalid arguments: ${problems.join("; ")}`,
+            toolName: tool.name
+          });
           return textResult(
             `Invalid arguments for tool "${tool.name}": ${problems.join("; ")}`,
             true
@@ -222,9 +277,23 @@ function wrapExecute(tool) {
       }
       try {
         const result = await tool.execute(args);
+        reportWebMCP({
+          level: "info",
+          code: "execute-result",
+          message: "Tool answered the agent.",
+          toolName: tool.name,
+          detail: isWebMCPVerbose() ? clipDiagnosticText(safeStringify(result)) : void 0
+        });
         return tool.outputSchema ? result : normalizeResult(result);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        reportWebMCP({
+          level: "error",
+          code: "execute-error",
+          message: `execute() threw (answered to the agent as isError): ${message}`,
+          toolName: tool.name,
+          detail: error
+        });
         return textResult(`Tool "${tool.name}" failed: ${message}`, true);
       }
     }
@@ -234,8 +303,16 @@ function registerTool(tool, options = {}) {
   if (!validateTool(tool)) return () => {
   };
   const context = getModelContext();
-  if (!context) return () => {
-  };
+  if (!context) {
+    reportWebMCP({
+      level: "info",
+      code: "unsupported",
+      message: "WebMCP is unavailable in this environment; registerTool() is a no-op.",
+      toolName: tool.name
+    });
+    return () => {
+    };
+  }
   const controller = new AbortController();
   const { signal: outerSignal, ...rest } = options;
   if (outerSignal) {
@@ -252,14 +329,32 @@ function registerTool(tool, options = {}) {
     if (result instanceof Promise) {
       result.catch((error) => {
         registered = false;
-        reportError(`WebMCP: failed to register tool "${tool.name}"`, error);
+        reportWebMCP({
+          level: "error",
+          code: "register-failed",
+          message: `Failed to register tool (e.g. NotAllowedError under Permissions Policy): ${String(error)}`,
+          toolName: tool.name,
+          detail: error
+        });
       });
     }
   } catch (error) {
-    reportError(`WebMCP: failed to register tool "${tool.name}"`, error);
+    reportWebMCP({
+      level: "error",
+      code: "register-failed",
+      message: `registerTool() threw: ${String(error)}`,
+      toolName: tool.name,
+      detail: error
+    });
     return () => {
     };
   }
+  reportWebMCP({
+    level: "info",
+    code: "register",
+    message: "Tool registered.",
+    toolName: tool.name
+  });
   return () => {
     if (!registered) return;
     registered = false;
@@ -268,6 +363,12 @@ function registerTool(tool, options = {}) {
       context.unregisterTool?.(tool.name);
     } catch {
     }
+    reportWebMCP({
+      level: "info",
+      code: "unregister",
+      message: "Tool unregistered.",
+      toolName: tool.name
+    });
   };
 }
 function provideContext(tools) {
@@ -279,7 +380,12 @@ function provideContext(tools) {
     try {
       context.provideContext({ tools: tools.map((t) => wrapExecute(t)) });
     } catch (error) {
-      reportError("WebMCP: provideContext failed", error);
+      reportWebMCP({
+        level: "error",
+        code: "provide-context-failed",
+        message: `provideContext() threw: ${String(error)}`,
+        detail: error
+      });
       return () => {
       };
     }
@@ -295,9 +401,12 @@ function provideContext(tools) {
     for (const unregister of unregisters) unregister();
   };
 }
-function reportError(prefix, error) {
-  if (typeof console !== "undefined") {
-    console.error(prefix, error);
+function safeStringify(value) {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
   }
 }
 function toolFormAttrs(options) {
@@ -466,17 +575,106 @@ function applyArgsToForm(form, args) {
   }
   return unapplied;
 }
+
+// src/events.ts
+var EVENT_NAME_ALIASES = {
+  toolchange: ["toolchange"],
+  toolactivated: ["toolactivated"],
+  // Chromium ships "toolcancel"; the explainer says "toolcanceled".
+  toolcanceled: ["toolcanceled", "toolcancel"]
+};
+function addWebMCPEventListener(name, handler) {
+  if (typeof window === "undefined") return () => {
+  };
+  const targets = [];
+  const context = getModelContext();
+  if (context && typeof context.addEventListener === "function") {
+    targets.push(context);
+  }
+  targets.push(window);
+  const seen = /* @__PURE__ */ new WeakSet();
+  const listener = (event) => {
+    if (seen.has(event)) return;
+    seen.add(event);
+    handler(event);
+  };
+  const names = EVENT_NAME_ALIASES[name] ?? [name];
+  for (const target of targets) {
+    for (const eventName of names) {
+      target.addEventListener(eventName, listener);
+    }
+  }
+  return () => {
+    for (const target of targets) {
+      for (const eventName of names) {
+        target.removeEventListener(eventName, listener);
+      }
+    }
+  };
+}
+
+// src/indicators.ts
+var STYLE_ATTRIBUTE = "data-webmcp-indicator-styles";
+var WEBMCP_INDICATOR_CSS = `
+form[data-webmcp-indicators]:is(:tool-form-active, [data-webmcp-active="true"]) {
+  outline: 2px solid var(--webmcp-indicator-color, #6d28d9);
+  outline-offset: 3px;
+}
+form[data-webmcp-indicators]:is(:tool-form-active, [data-webmcp-active="true"])
+  :is(button[type="submit"], input[type="submit"]) {
+  outline: 2px solid var(--webmcp-indicator-color, #6d28d9);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  form[data-webmcp-indicators]:is(:tool-form-active, [data-webmcp-active="true"])
+    :is(button[type="submit"], input[type="submit"]) {
+    animation: webmcp-submit-pulse 1.2s ease-in-out infinite;
+  }
+}
+@keyframes webmcp-submit-pulse {
+  50% { outline-offset: 5px; }
+}
+`;
+var injectionCount = 0;
+function injectWebMCPIndicatorStyles() {
+  if (typeof document === "undefined") return () => {
+  };
+  injectionCount++;
+  let style = document.head.querySelector(`style[${STYLE_ATTRIBUTE}]`);
+  if (!style) {
+    style = document.createElement("style");
+    style.setAttribute(STYLE_ATTRIBUTE, "");
+    style.textContent = WEBMCP_INDICATOR_CSS;
+    document.head.appendChild(style);
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    injectionCount--;
+    if (injectionCount <= 0) {
+      injectionCount = 0;
+      document.head.querySelector(`style[${STYLE_ATTRIBUTE}]`)?.remove();
+    }
+  };
+}
 export {
   DEFAULT_MAX_RESULT_LENGTH,
+  WEBMCP_INDICATOR_CSS,
+  addWebMCPEventListener,
   applyArgsToForm,
   extractFormSchema,
   getModelContext,
+  injectWebMCPIndicatorStyles,
   isWebMCPSupported,
   isWebMCPTestingSupported,
+  isWebMCPVerbose,
   jsonResult,
   normalizeResult,
+  onWebMCPDiagnostic,
   provideContext,
   registerTool,
+  setWebMCPVerbose,
   textResult,
   toolFormAttrs,
   toolParamAttrs,

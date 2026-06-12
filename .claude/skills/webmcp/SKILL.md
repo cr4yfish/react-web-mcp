@@ -79,7 +79,7 @@ Registration options:
 
 - `provideContext({ tools: [...] })` — replaces the page's **entire** registered toolset in one call (use on auth/app-state changes). `registerTool` adds incrementally on top.
 - `unregisterTool(name)` / `clearContext()` — present in some Chrome versions; feature-detect before calling.
-- Events fired at the ModelContext object: `toolchange` (toolset changed), `toolactivated` (a tool ran / a declarative form was filled awaiting review), `toolcanceled` (agent canceled an in-flight call).
+- Lifecycle events — **where they actually fire matters**: Chromium dispatches `toolactivated` (a tool ran / a declarative form was filled awaiting review) and the cancel event at the **window**, and only `toolchange` (toolset changed) at the ModelContext object. Chromium also names the cancel event `toolcancel`, not the explainer's `toolcanceled` (and currently fires it for imperative tools only). The events are `WebMCPEvent`s carrying a `toolName` property. Attach listeners to both targets (and both cancel spellings) to be safe — react-web-mcp's `useWebMCPEvent`/`addWebMCPEventListener` do this for you.
 - Registration rejects with `NotAllowedError` DOMException when Permissions Policy disallows it.
 
 ### Permissions Policy / iframes
@@ -109,6 +109,20 @@ HTML forms become tools via attributes — no JS required:
 - `toolautosubmit` (boolean attribute): lets the agent submit the form itself. **Absent by default**: the browser fills the form, focuses the submit button, and the *user* reviews and submits — the human-in-the-loop safety default. Use autosubmit only for low-stakes actions.
 - The browser **synthesizes the input schema** from form controls: each control's `name` becomes a property; `required` → required; `toolparamdescription` → property description; control types/constraints (`type=number`, `min`, `max`, `step`, `<select>` options…) shape the property schema (exact algorithm still being specced; Chromium ships a loose version).
 - Registration/teardown is automatic as annotated forms enter/leave the DOM or attributes change. Form reset or tool-attribute changes cancel in-flight invocations.
+- The synthesized schema depends on control **structure** (names, types, `required`, `<option>` values), not current values — agent fills and user typing don't churn registration, but adding/removing/renaming controls re-registers the tool (and cancels a pending invocation with "tool definition was updated").
+- Agent fills dispatch real `input`/`change` events on the controls (framework-controlled inputs stay in sync), and `toolactivated` fires only after the fill completes.
+
+### Chromium lifecycle internals — the failure mode to design around
+
+Verified against Chromium's `HTMLFormElement`/`ModelContext` sources:
+
+- **One pending invocation per form.** Each declarative form holds a single reply slot. If the agent invokes the tool again while a previous invocation is still pending (form filled, user hasn't submitted), Chromium **overwrites the slot and drops the older reply callback without answering it** — and a dropped reply closes the document's WebMCP message pipe: **every tool on the page (imperative ones included) silently stops working until reload**. This is the classic "everything broke after a few form-tool calls" symptom: each unanswered, re-invoked form call is a landmine.
+- **`form.reset()` is the sanctioned page-side cancel.** Resetting a form with a pending invocation answers the agent with a proper "Tool execution cancelled by a form reset" error, returns the form to idle, and keeps the channel healthy. Use it (a) on a watchdog timeout for stale invocations, (b) as a manual "cancel pending invocation" affordance on test pages.
+- **`agentInvoked` is true on the user's review submit.** Any submission that completes a pending invocation carries `agentInvoked: true` — including the human clicking submit after reviewing the agent-filled form. The flag means "this submission answers an agent invocation", not "the agent performed the submission". Handle it with `respondWith`, not with your human-path logic.
+- **`respondWith()` rules** (throws `InvalidStateError` otherwise): only on events with `agentInvoked === true`, only **after** `preventDefault()`, and only **synchronously during dispatch** (don't `await` before calling it — pass the pending promise). `preventDefault()` without `respondWith()` is answered browser-side as a site programming error.
+- **Without `toolautosubmit`** the browser focuses the submit button and pauses the agent until the user submits; the invocation stays pending indefinitely otherwise. With `toolautosubmit` the browser submits synchronously during the invocation (so `toolactivated` can arrive after the submit handler already ran).
+- **Don't reset immediately after answering**: a `reset()` issued before the browser consumed the `respondWith` promise cancels the invocation instead of answering it — defer any post-answer reset by a macrotask.
+- **Native validation can eat agent submits**: a form whose agent-filled controls fail constraint validation reports a validation error to the agent (current Chromium) or, in some builds, never fires `submit` at all. Render declarative tool forms `noValidate` and validate in your submit/`onAgentSubmit` handler (re-run `reportValidity()` for human submits).
 
 ### Returning a response without navigating
 
@@ -126,12 +140,14 @@ form.addEventListener("submit", (e) => {
 
 If the form *does* navigate, the proposal is to use the first `<script type="application/ld+json">` on the target page as the tool response (cross-document response handling is still under discussion, spec issue #135).
 
-### CSS pseudo-classes
+### CSS pseudo-classes & visual indicators
 
 - `:tool-form-active` — matches a form whose declarative tool is "running" (filled by the agent, awaiting user review/submission).
 - `:tool-submit-active` — matches that form's submit button.
 
-Use them to visually highlight agent-filled forms for review.
+The "running" state starts at agent fill and ends when the form is reset or removed, the `respondWith` promise resolves, the tool attributes change, or a `toolautosubmit` submission completes.
+
+**Always give users a visual indicator** on review-style forms — without one, testers and users don't realize the form awaits *their* submit, leave the invocation pending, and trigger the one-pending-invocation failure mode above. Pattern: style `:tool-form-active` and keep a JS-maintained attribute fallback (e.g. `data-webmcp-active="true"` toggled on `toolactivated`/answer/reset) for engines without the pseudo-class; wrap the pseudo-class in `:is()` so unknown-selector parsing can't invalidate the rule. react-web-mcp ships this as `<ToolForm indicators>` + `WEBMCP_INDICATOR_CSS`.
 
 ## Security model & secure-tools guidance
 
@@ -164,6 +180,8 @@ These apply whatever your framework (React, Vue, Svelte, Angular, vanilla):
 - **Cleanup**: tie registration to an `AbortController` aborted on unmount/route change, or the tool outlives its UI.
 - **Unhandled rejections**: `registerTool` can reject (`NotAllowedError` under Permissions Policy) — catch it. Exceptions thrown in `execute` should be converted to `{ isError: true }` responses, never left as unhandled rejections.
 - **The API split**: resolve `document.modelContext` first, fall back to `navigator.modelContext`; feature-detect optional members (`provideContext`, `unregisterTool`, `clearContext`).
+- **Never leave a declarative invocation pending.** One pending invocation per form (see the Chromium lifecycle internals above); a re-invoke drops the old reply and can kill the page's whole WebMCP channel. Answer promptly, show a visual indicator so the user actually submits, and add a stale-invocation watchdog that cancels via `form.reset()`.
+- **Don't fail silently.** Surface registration failures, validation rejections, unanswered/overlapping invocations, and cancellations to the console and (on test pages) to an on-page log — silent breakage in this API is otherwise close to undebuggable.
 
 ## Using React? Use react-web-mcp
 
@@ -181,9 +199,10 @@ import { registerTool, provideContext } from "react-web-mcp/vanilla"; // React-f
 
 - `useWebMCPTool({ name, description, inputSchema?, outputSchema?, annotations?, exposedTo?, enabled?, execute })` — registers for the component lifetime; `execute` sees fresh closures without re-registration (ref-based); definition changes (deep-compared via JSON) re-register; `enabled:false` unregisters in place. Returns `{ isRegistered }`.
 - `useWebMCP()` → `{ isSupported, modelContext }`, SSR/hydration-safe (false until mounted).
-- `useWebMCPEvent("toolchange" | "toolactivated" | "toolcanceled", handler)`.
-- `<ToolForm name description autoSubmit? onAgentSubmit?>` — declarative form wrapper; `onAgentSubmit(formData, event)` answers agent submissions via `respondWith` without navigation.
-- Core (`react-web-mcp/vanilla`, no React import): `getModelContext`, `isWebMCPSupported`, `registerTool` (returns `unregister()`; wraps execute with normalization + error-to-`isError`), `provideContext`, `textResult`, `jsonResult` (truncates at 50k chars), `toolFormAttrs`, `toolParamAttrs`. Usable from any framework, not just React.
+- `useWebMCPEvent("toolchange" | "toolactivated" | "toolcanceled", handler)` — listens on window **and** the ModelContext and handles Chromium's `toolcancel` naming, deduped, so handlers fire in every implementation; events expose `toolName`. Framework-agnostic twin: `addWebMCPEventListener`.
+- `<ToolForm name description autoSubmit? onAgentSubmit? indicators? pendingTimeoutMs? onPendingChange? resetAfterAgentSubmit?>` — declarative form wrapper; `onAgentSubmit(formData, event)` answers agent submissions via `respondWith` without navigation. `indicators` opts into the visual highlight (pseudo-class + `data-webmcp-active` fallback, `--webmcp-indicator-color` to theme). `pendingTimeoutMs` (default 2 min) is the stale-invocation watchdog that cancels via `form.reset()` so the one-pending-invocation failure mode can't kill the page; overlapping invocations are reported as an `invocation-overlap` error diagnostic. `onPendingChange(pending)` drives custom review UI.
+- Verbose mode / diagnostics (nothing fails silently): `setWebMCPVerbose(true)` logs the full lifecycle (`[webmcp]` prefix); `onWebMCPDiagnostic(listener)` streams every diagnostic `{ level, code, message, toolName?, detail? }` for on-page debug logs — codes include `invocation-overlap`, `invocation-timeout`, `respondwith-missing`, `agent-response-error`, `invalid-arguments`, `register-failed`.
+- Core (`react-web-mcp/vanilla`, no React import): `getModelContext`, `isWebMCPSupported`, `registerTool` (returns `unregister()`; wraps execute with normalization + error-to-`isError`), `provideContext`, `textResult`, `jsonResult` (truncates at 50k chars), `toolFormAttrs`, `toolParamAttrs`, plus the diagnostics, event, and indicator helpers above. Usable from any framework, not just React.
 - Everything is a no-op without browser support — safe to ship unconditionally.
 - Next.js: main entry has `"use client"`; call hooks from client components. Add the origin-trial `<meta>` in the root layout for production.
 
@@ -192,6 +211,7 @@ import { registerTool, provideContext } from "react-web-mcp/vanilla"; // React-f
 - **Chrome DevTools → WebMCP panel** (`developer.chrome.com/docs/devtools/application/webmcp`): live list of registered tools + schemas, chronological invocation log, manual invocation, built-in Gemini integration to exercise tools with natural language, "Copy trace" for regression tracking.
 - **Model Context Tool Inspector** (Chrome extension, github.com/beaufortfrancois/model-context-tool-inspector): verify exposure, visualize schemas.
 - **WebMCP Evals CLI** (github.com/GoogleChromeLabs/webmcp-tools `evals-cli/`): define eval cases as `{ messages: [{role:"user", content:"…"}], expectedCall: [{ functionName, arguments }] }`; run against a static `schema.json` (`runevals`) or against the live page's tools via Puppeteer + Chrome Canary with the WebMCP flag (`webmcpevals`). Backends: Gemini (primary), Ollama/Vercel AI SDK (experimental). Generates HTML pass-rate reports. Iterate on names/descriptions/schemas until models reliably pick the right tool with the right args.
+- **react-web-mcp verbose mode**: on test pages, `setWebMCPVerbose(true)` + `onWebMCPDiagnostic` give a complete lifecycle trail (invocations, responses, cancellations, overlaps) in the console and your own UI — the fastest way to catch a silently-dying tool channel.
 - **Unit tests**: mock the ModelContext — an `EventTarget` exposing `registerTool` that honors `options.signal` for unregistration (see `tests/mock-model-context.ts` in react-web-mcp for a reference implementation).
 - **Official demo corpus** for reference patterns: `demos/react-flightsearch` (imperative React + outputSchema), `demos/french-bistro` (declarative form), `demos/hotel-chain` & `demos/doors` (both styles), `demos/page-agent` (Gemini-driven meta-agent).
 

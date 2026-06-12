@@ -149,13 +149,21 @@ if (!isSupported) return null;
 
 ### `useWebMCPEvent(name, handler)`
 
-Subscribes to ModelContext events for the component lifetime.
+Subscribes to WebMCP lifecycle events for the component lifetime.
 
 ```tsx
-useWebMCPEvent("toolactivated", () => { /* e.g. scroll a filled form into view */ });
+useWebMCPEvent("toolactivated", (e) => { /* e.toolName: scroll that form into view */ });
 useWebMCPEvent("toolcanceled", () => { /* agent abandoned an in-flight invocation */ });
 useWebMCPEvent("toolchange", () => { /* the page's toolset changed */ });
 ```
+
+Chromium dispatches `toolactivated` and the cancel event at the **window**
+(only `toolchange` fires at the ModelContext object) and names the cancel
+event `toolcancel`. The hook listens on both targets and both spellings,
+deduped per event, so handlers fire in every implementation. The event's
+`toolName` property (when the browser provides it) names the tool concerned.
+Framework-agnostic equivalent: `addWebMCPEventListener(name, handler) →
+unsubscribe()`, also exported from `/vanilla`.
 
 ## Components
 
@@ -181,12 +189,35 @@ synthesizes the input schema from the form controls.
 ```
 
 - Without `autoSubmit`, the agent fills the form and the **user** reviews and
-  submits — the human-in-the-loop default. Style that state with the
-  `:tool-form-active` / `:tool-submit-active` CSS pseudo-classes.
+  submits — the human-in-the-loop default.
 - `onAgentSubmit(formData, event)` handles agent-invoked submissions without
   navigation: the default action is prevented and your return value is piped
   back to the agent via `SubmitEvent.respondWith()`. User submissions behave as
   a normal form.
+- `indicators?: boolean` — opt-in visual highlight of the agent-filled /
+  awaiting-review state. Injects a shared stylesheet (once per page) keyed on
+  the native `:tool-form-active` / `:tool-submit-active` pseudo-classes plus a
+  `data-webmcp-active="true"` attribute fallback maintained by the component.
+  Customize via the `--webmcp-indicator-color` CSS custom property, or style
+  the selectors yourself (`WEBMCP_INDICATOR_CSS` / `injectWebMCPIndicatorStyles()`
+  are exported).
+- `pendingTimeoutMs?: number` (default `120000`, `0` disables) — stale-invocation
+  watchdog. Chromium keeps **one** pending invocation per declarative form; a
+  re-invoke on top of a stale one silently drops the older reply callback and
+  can close the page's WebMCP channel, disabling every tool until reload. When
+  an invocation stays unanswered past the timeout, the form is `reset()` — the
+  sanctioned page-side cancel: the agent receives a proper "cancelled" error
+  and the channel stays healthy.
+- `onPendingChange?: (pending: boolean) => void` — observe the pending state
+  (true from agent fill until answered/cancelled/reset).
+- `resetAfterAgentSubmit?: boolean` — `reset()` the form one tick after an
+  agent submission was answered (deferred so it cannot race the browser's
+  response delivery).
+- Diagnostics: overlapping invocations emit an `invocation-overlap` **error**
+  diagnostic; an agent submit without `respondWith()` support emits
+  `respondwith-missing`; a missing `onAgentSubmit` emits
+  `agent-submit-navigation` (the form then navigates and the response is taken
+  from the target page's ld+json). See `onWebMCPDiagnostic`.
 - In browsers without WebMCP it is just a normal form.
 
 ## Declarative attribute helpers
@@ -229,6 +260,21 @@ Importable from any framework or plain scripts; no React import, no `"use client
 - `extractFormSchema(form)` — form → JSON Schema (skips password/hidden/file).
 - `applyArgsToForm(form, args)` — fill controls via native setters +
   `input`/`change` events (React-controlled-input compatible).
+- `setWebMCPVerbose(on)` / `isWebMCPVerbose()` — verbose mode: info-level
+  lifecycle logs (registrations, invocations, agent submissions, responses)
+  reach the console with a `[webmcp]` prefix. Warnings/errors log regardless.
+- `onWebMCPDiagnostic(listener) → unsubscribe()` — subscribe to every
+  diagnostic the package emits (`{ level, code, message, toolName?, detail? }`),
+  independent of verbose mode — ideal for an on-page debug log. Codes include
+  `register`, `unregister`, `register-failed`, `execute`, `execute-error`,
+  `invalid-arguments`, `result-truncated`, `agent-submit`, `agent-response`,
+  `agent-response-error`, `respondwith-missing`, `agent-submit-navigation`,
+  `invocation-pending`, `invocation-overlap`, `invocation-timeout`,
+  `invocation-canceled`, `unsupported`.
+- `addWebMCPEventListener(name, handler) → unsubscribe()` — lifecycle events on
+  every implementation surface (window + ModelContext, `toolcancel` alias).
+- `injectWebMCPIndicatorStyles() → release()` / `WEBMCP_INDICATOR_CSS` — the
+  default visual-indicator stylesheet (refcounted injection).
 
 ## Exported types
 
@@ -246,8 +292,12 @@ augmentation (`toolname`, `tooldescription`, `toolautosubmit`,
 | `useWebMCPTools(tools, options?)` | hook | Register a batch of tools (individually, composable) |
 | `useFormTool(options)` | hook | Tool with a schema derived from a rendered `<form>` |
 | `useWebMCP()` | hook | `{ isSupported, modelContext }` |
-| `useWebMCPEvent(name, handler)` | hook | Subscribe to `toolchange` / `toolactivated` / `toolcanceled` |
-| `ToolForm` | component | `<form>` registered as a declarative tool, with `onAgentSubmit` |
+| `useWebMCPEvent(name, handler)` | hook | Subscribe to `toolchange` / `toolactivated` / `toolcanceled` (window + ModelContext, `toolcancel` alias) |
+| `ToolForm` | component | Declarative form tool: `onAgentSubmit`, `indicators`, `pendingTimeoutMs`, `onPendingChange`, `resetAfterAgentSubmit` |
+| `setWebMCPVerbose(on)` / `isWebMCPVerbose()` | function | Verbose lifecycle logging |
+| `onWebMCPDiagnostic(listener)` | function | Subscribe to all package diagnostics |
+| `addWebMCPEventListener(name, handler)` | function | Framework-agnostic lifecycle event subscription |
+| `injectWebMCPIndicatorStyles()` / `WEBMCP_INDICATOR_CSS` | function/const | Visual indicators for agent-filled forms |
 | `registerTool(tool, options?)` | function | Framework-agnostic registration; returns `unregister()` |
 | `provideContext(tools)` | function | Replace the page's whole toolset; returns `unregister()` |
 | `getModelContext()` / `isWebMCPSupported()` | function | Feature detection (SSR-safe) |

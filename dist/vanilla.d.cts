@@ -155,6 +155,8 @@ declare module "react" {
         toolname?: string;
         /** WebMCP declarative API: natural-language description of the form tool. */
         tooldescription?: string;
+        /** WebMCP declarative API: optional human-readable title for the form tool. */
+        tooltitle?: string;
         /** WebMCP declarative API: lets the agent submit without user review. */
         toolautosubmit?: boolean | "";
     }
@@ -163,11 +165,6 @@ declare module "react" {
         toolparamdescription?: string;
     }
 }
-
-/**
- * Framework-agnostic WebMCP core. Safe to import anywhere (including SSR /
- * Node) — every function degrades to a no-op when WebMCP is unavailable.
- */
 
 /** Default cap applied by {@link jsonResult} so oversized tool outputs don't
  * blow past agent context limits. */
@@ -289,4 +286,81 @@ declare function extractFormSchema(form: HTMLFormElement): JSONSchema;
  */
 declare function applyArgsToForm(form: HTMLFormElement, args: Record<string, unknown>): string[];
 
-export { DEFAULT_MAX_RESULT_LENGTH, type JSONSchema, type ModelContext, type RegisterToolOptions, type ToolAnnotations, type ToolExecuteResult, type ToolResponse, type ToolResponseContent, type WebMCPSubmitEvent, type WebMCPTool, applyArgsToForm, extractFormSchema, getModelContext, isWebMCPSupported, isWebMCPTestingSupported, jsonResult, normalizeResult, provideContext, registerTool, textResult, toolFormAttrs, toolParamAttrs, validateToolInput };
+/**
+ * Verbose mode + diagnostics stream. The package must never fail silently:
+ * every lifecycle anomaly is funneled through {@link reportWebMCP}, which
+ * always notifies subscribers and always sends warnings/errors to the
+ * console. Info-level lifecycle logs (registrations, invocations, responses)
+ * reach the console only in verbose mode — enable it on debug/test pages
+ * with `setWebMCPVerbose(true)`.
+ */
+type WebMCPDiagnosticLevel = "info" | "warn" | "error";
+type WebMCPDiagnosticCode = "unsupported" | "register" | "unregister" | "register-failed" | "execute" | "execute-result" | "execute-error" | "invalid-arguments" | "result-truncated" | "invalid-definition" | "provide-context-failed" | "agent-submit" | "agent-response" | "agent-response-error" | "respondwith-missing" | "agent-submit-navigation" | "invocation-pending" | "invocation-overlap" | "invocation-timeout" | "invocation-canceled";
+interface WebMCPDiagnostic {
+    level: WebMCPDiagnosticLevel;
+    code: WebMCPDiagnosticCode;
+    /** Human-readable, self-contained message. */
+    message: string;
+    /** Name of the tool this diagnostic concerns, when known. */
+    toolName?: string;
+    /** Extra structured context (argument keys, durations, results, errors). */
+    detail?: unknown;
+}
+type DiagnosticListener = (diagnostic: WebMCPDiagnostic) => void;
+/**
+ * Enables/disables verbose mode. When enabled, info-level lifecycle
+ * diagnostics (tool registration, invocations, agent submissions, responses)
+ * are logged to the console with a `[webmcp]` prefix. Warnings and errors
+ * are logged regardless of this flag.
+ */
+declare function setWebMCPVerbose(enabled: boolean): void;
+/** True when verbose mode is on. */
+declare function isWebMCPVerbose(): boolean;
+/**
+ * Subscribes to every diagnostic the package emits (all levels, independent
+ * of verbose mode) — ideal for rendering an on-page debug log next to the
+ * tools being tested. Returns an unsubscribe function.
+ */
+declare function onWebMCPDiagnostic(listener: DiagnosticListener): () => void;
+
+/** Spec-facing event names accepted by this package. */
+type WebMCPEventName = "toolchange" | "toolactivated" | "toolcanceled";
+/** A WebMCP lifecycle event. Chromium's `WebMCPEvent` carries the name of
+ * the tool concerned in `toolName` (empty/undefined on older builds). */
+type WebMCPToolEvent = Event & {
+    readonly toolName?: string;
+};
+/**
+ * Subscribes to a WebMCP lifecycle event on every surface current
+ * implementations use (window + ModelContext, all name variants), invoking
+ * `handler` exactly once per event. Returns an unsubscribe function.
+ * No-op (returns a no-op unsubscriber) during SSR or without WebMCP.
+ */
+declare function addWebMCPEventListener(name: WebMCPEventName, handler: (event: WebMCPToolEvent) => void): () => void;
+
+/**
+ * Opt-in visual indicators for declarative form tools.
+ *
+ * While an agent invocation is pending (the agent filled the form and the
+ * user is expected to review and submit it), the browser applies the CSS
+ * pseudo-classes `:tool-form-active` (on the form) and `:tool-submit-active`
+ * (on its submit button). This module ships a small default stylesheet for
+ * that state, plus a `data-webmcp-active` attribute fallback maintained by
+ * `<ToolForm indicators>` for engines that don't support the pseudo-classes
+ * (the attribute also gives page CSS a stable hook).
+ *
+ * The selectors only match forms that opted in via the
+ * `data-webmcp-indicators` attribute, and use `:is()` so the unknown
+ * pseudo-class can't invalidate the whole rule in other browsers. Override
+ * the color with `--webmcp-indicator-color`, or write your own CSS against
+ * `:tool-form-active` / `[data-webmcp-active="true"]` instead.
+ */
+declare const WEBMCP_INDICATOR_CSS = "\nform[data-webmcp-indicators]:is(:tool-form-active, [data-webmcp-active=\"true\"]) {\n  outline: 2px solid var(--webmcp-indicator-color, #6d28d9);\n  outline-offset: 3px;\n}\nform[data-webmcp-indicators]:is(:tool-form-active, [data-webmcp-active=\"true\"])\n  :is(button[type=\"submit\"], input[type=\"submit\"]) {\n  outline: 2px solid var(--webmcp-indicator-color, #6d28d9);\n  outline-offset: 2px;\n}\n@media (prefers-reduced-motion: no-preference) {\n  form[data-webmcp-indicators]:is(:tool-form-active, [data-webmcp-active=\"true\"])\n    :is(button[type=\"submit\"], input[type=\"submit\"]) {\n    animation: webmcp-submit-pulse 1.2s ease-in-out infinite;\n  }\n}\n@keyframes webmcp-submit-pulse {\n  50% { outline-offset: 5px; }\n}\n";
+/**
+ * Injects the default indicator stylesheet once per document (refcounted).
+ * Returns a release function; the `<style>` element is removed when every
+ * caller has released. Safe no-op during SSR.
+ */
+declare function injectWebMCPIndicatorStyles(): () => void;
+
+export { DEFAULT_MAX_RESULT_LENGTH, type JSONSchema, type ModelContext, type RegisterToolOptions, type ToolAnnotations, type ToolExecuteResult, type ToolResponse, type ToolResponseContent, WEBMCP_INDICATOR_CSS, type WebMCPDiagnostic, type WebMCPDiagnosticCode, type WebMCPDiagnosticLevel, type WebMCPEventName, type WebMCPSubmitEvent, type WebMCPTool, type WebMCPToolEvent, addWebMCPEventListener, applyArgsToForm, extractFormSchema, getModelContext, injectWebMCPIndicatorStyles, isWebMCPSupported, isWebMCPTestingSupported, isWebMCPVerbose, jsonResult, normalizeResult, onWebMCPDiagnostic, provideContext, registerTool, setWebMCPVerbose, textResult, toolFormAttrs, toolParamAttrs, validateToolInput };

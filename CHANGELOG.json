@@ -7,6 +7,34 @@
       {
         "type": "added",
         "text": "ROADMAP.json at the repo root, rendered automatically on the site like the changelog: milestone plan up to v1.0 (fully automatic conversion of React apps into WebMCP tool surfaces), statuses updated as releases land"
+      },
+      {
+        "type": "fixed",
+        "text": "ToolForm guards the page's WebMCP channel against stale declarative invocations: Chromium keeps one pending invocation per form and a re-invoke silently drops the older reply callback (closing the channel and disabling every tool until reload) — a pendingTimeoutMs watchdog (default 2 min, 0 disables) now auto-cancels stale invocations via form.reset(), the sanctioned page-side cancel that answers the agent with a proper 'cancelled' error, and overlapping invocations are reported as a loud invocation-overlap error diagnostic"
+      },
+      {
+        "type": "fixed",
+        "text": "useWebMCPEvent (and the new addWebMCPEventListener) actually fire in Chrome now: Chromium dispatches toolactivated and the cancel event at the window (not the ModelContext) and names the cancel event toolcancel — listeners attach to both targets and both spellings, deduped per event, and expose the event's toolName"
+      },
+      {
+        "type": "added",
+        "text": "Verbose mode and a diagnostics stream so nothing fails silently: setWebMCPVerbose(true) logs the full lifecycle ([webmcp] console prefix) and onWebMCPDiagnostic(listener) delivers every diagnostic (registrations, invocations, responses, validation rejections, truncations, cancellations, overlaps) to page code regardless of verbose mode"
+      },
+      {
+        "type": "added",
+        "text": "Opt-in visual indicators for agent-filled forms: ToolForm's indicators prop injects a shared stylesheet keyed on the native :tool-form-active/:tool-submit-active pseudo-classes with a data-webmcp-active attribute fallback, customizable via --webmcp-indicator-color; WEBMCP_INDICATOR_CSS and injectWebMCPIndicatorStyles() are exported for custom styling"
+      },
+      {
+        "type": "added",
+        "text": "ToolForm lifecycle hooks: onPendingChange(pending) observes the agent-filled/awaiting-review state and resetAfterAgentSubmit resets the form one tick after an agent submission was answered"
+      },
+      {
+        "type": "added",
+        "text": "ToolForm answers agent submits with loud diagnostics for the previously silent paths: respondwith-missing (error) when SubmitEvent.respondWith is unavailable and agent-submit-navigation (warn) when no onAgentSubmit handler is set"
+      },
+      {
+        "type": "added",
+        "text": "tooltitle added to the JSX attribute augmentation (Chromium supports a tool title on declarative forms)"
       }
     ]
   },

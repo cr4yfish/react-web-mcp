@@ -17,6 +17,20 @@ export {
 } from "./core";
 export { validateToolInput } from "./validate";
 export { applyArgsToForm, extractFormSchema } from "./form";
+export {
+  isWebMCPVerbose,
+  onWebMCPDiagnostic,
+  setWebMCPVerbose,
+  type WebMCPDiagnostic,
+  type WebMCPDiagnosticCode,
+  type WebMCPDiagnosticLevel,
+} from "./debug";
+export {
+  addWebMCPEventListener,
+  type WebMCPEventName,
+  type WebMCPToolEvent,
+} from "./events";
+export { WEBMCP_INDICATOR_CSS, injectWebMCPIndicatorStyles } from "./indicators";
 export type {
   JSONSchema,
   ModelContext,
