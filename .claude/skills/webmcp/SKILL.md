@@ -167,23 +167,25 @@ These apply whatever your framework (React, Vue, Svelte, Angular, vanilla):
 
 ## Using React? Use react-web-mcp
 
-For React/Next.js apps, don't hand-roll the above — **[react-web-mcp](https://github.com/cr4yfish/react-web-mcp)** is a zero-dependency React hooks/components package for WebMCP that already handles every gotcha listed above (SSR safety, effect-time registration, churn-free re-registration, fresh closures via refs, abort-based cleanup, error-to-`isError` normalization, the `document`/`navigator` split).
+For React/Next.js apps, don't hand-roll the above — **[react-web-mcp](https://github.com/cr4yfish/react-web-mcp)** (published as `@cr4yfish/react-web-mcp`) is a zero-dependency React hooks/components package for WebMCP that already handles every gotcha listed above (SSR safety, effect-time registration, churn-free re-registration, fresh closures via refs, abort-based cleanup, error-to-`isError` normalization, the `document`/`navigator` split).
 
 ```bash
-npm install github:cr4yfish/react-web-mcp   # or pnpm add / yarn add
+npm install @cr4yfish/react-web-mcp   # or pnpm add / yarn add
 ```
 
 ```tsx
-import { useWebMCP, useWebMCPTool, useWebMCPEvent, ToolForm,
-         toolFormAttrs, toolParamAttrs } from "react-web-mcp";
-import { registerTool, provideContext } from "react-web-mcp/vanilla"; // React-free / RSC-safe
+import { useWebMCP, useWebMCPTool, useWebMCPTools, useFormTool, useWebMCPEvent,
+         ToolForm, toolFormAttrs, toolParamAttrs } from "@cr4yfish/react-web-mcp";
+import { registerTool, provideContext } from "@cr4yfish/react-web-mcp/vanilla"; // React-free / RSC-safe
 ```
 
 - `useWebMCPTool({ name, description, inputSchema?, outputSchema?, annotations?, exposedTo?, enabled?, execute })` — registers for the component lifetime; `execute` sees fresh closures without re-registration (ref-based); definition changes (deep-compared via JSON) re-register; `enabled:false` unregisters in place. Returns `{ isRegistered }`.
+- `useWebMCPTools(tools, { enabled? })` — batch registration; tools are registered individually (composable across components), unlike `provideContext` which replaces the page's toolset.
+- `useFormTool({ formRef, name, description, autoSubmit?, onToolCall?, annotations?, enabled? })` — derives the input schema from the **rendered DOM form** (`extractFormSchema`), so it works with MUI/AntD/shadcn/portals without adapters; on invocation fills controls via native setters + input/change events (`applyArgsToForm`, React-controlled-input compatible), then user-review (default) / `requestSubmit()` (`autoSubmit`) / custom `onToolCall`. Skips password/hidden/file inputs. Returns `{ isRegistered, refresh }` — call `refresh()` after dynamic field changes.
 - `useWebMCP()` → `{ isSupported, modelContext }`, SSR/hydration-safe (false until mounted).
 - `useWebMCPEvent("toolchange" | "toolactivated" | "toolcanceled", handler)`.
 - `<ToolForm name description autoSubmit? onAgentSubmit?>` — declarative form wrapper; `onAgentSubmit(formData, event)` answers agent submissions via `respondWith` without navigation.
-- Core (`react-web-mcp/vanilla`, no React import): `getModelContext`, `isWebMCPSupported`, `registerTool` (returns `unregister()`; wraps execute with normalization + error-to-`isError`), `provideContext`, `textResult`, `jsonResult` (truncates at 50k chars), `toolFormAttrs`, `toolParamAttrs`. Usable from any framework, not just React.
+- Core (`@cr4yfish/react-web-mcp/vanilla`, no React import): `getModelContext`, `isWebMCPSupported`, `isWebMCPTestingSupported` (detects `navigator.modelContextTesting` from the testing flag / Tool Inspector), `registerTool` (returns `unregister()`; wraps execute with normalization + error-to-`isError`; validates name/description/schema — throws in dev, console+no-op in prod), `provideContext`, `textResult`, `jsonResult` (truncates at 50k chars), `toolFormAttrs`, `toolParamAttrs`, `extractFormSchema`, `applyArgsToForm`. Usable from any framework, not just React.
 - Everything is a no-op without browser support — safe to ship unconditionally.
 - Next.js: main entry has `"use client"`; call hooks from client components. Add the origin-trial `<meta>` in the root layout for production.
 
