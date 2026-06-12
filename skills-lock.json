@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "webmcp": {
+      "source": "cr4yfish/web-mcp-skill",
+      "sourceType": "github",
+      "skillPath": "skills/webmcp/SKILL.md",
+      "computedHash": "351a0864291d6f6089c50ba41e6e96edd7d1a0b6ef423a221d9cc6c44acab11e"
+    }
+  }
+}

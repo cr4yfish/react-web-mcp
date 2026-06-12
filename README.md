@@ -253,6 +253,14 @@ From [Chrome's guidance](https://developer.chrome.com/docs/ai/webmcp/best-practi
 
 This package is used in production-style fashion by [genie-demo](https://github.com/cr4yfish/genie-demo) — see its `/test/webmcp` page for an end-to-end playground (support detection, imperative tools, declarative form, invocation log).
 
+## Agent skill
+
+Working on WebMCP with a coding agent (Claude Code, Cursor, Codex, …)? Install the [web-mcp-skill](https://github.com/cr4yfish/web-mcp-skill) — a framework-agnostic deep-dive WebMCP reference skill — via the [skills.sh CLI](https://www.skills.sh):
+
+```bash
+npx skills add cr4yfish/web-mcp-skill
+```
+
 ## License
 
 MIT
