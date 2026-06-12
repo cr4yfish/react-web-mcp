@@ -19,17 +19,10 @@ export function SkillHero() {
     <section className="relative overflow-hidden">
       <div aria-hidden className="bg-grid absolute inset-0" />
       <div className="relative mx-auto max-w-6xl px-6 pb-16 pt-20 lg:pt-28">
-        <motion.div {...fadeUp} transition={{ duration: 0.4 }}>
-          <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 font-mono text-xs text-muted-foreground">
-            <span className="size-1.5 rounded-full bg-primary" />
-            agent skill · framework-agnostic
-          </span>
-        </motion.div>
-
         <motion.h1
           {...fadeUp}
           transition={{ duration: 0.5, delay: 0.08 }}
-          className="mt-6 max-w-3xl text-5xl font-semibold tracking-tight sm:text-6xl"
+          className="max-w-3xl text-5xl font-semibold tracking-tight sm:text-6xl"
         >
           Make your agent a<br />
           <span className="text-primary">WebMCP expert.</span>
