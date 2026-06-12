@@ -14,6 +14,10 @@ import type {
  * blow past agent context limits. */
 export const DEFAULT_MAX_RESULT_LENGTH = 50_000;
 
+// Bundlers statically replace process.env.NODE_ENV; this keeps the access
+// type-safe without depending on @types/node.
+declare const process: { env?: { NODE_ENV?: string } } | undefined;
+
 /**
  * Returns the page's ModelContext, preferring the spec surface
  * (`document.modelContext`, Chrome 150+) and falling back to the deprecated
@@ -33,6 +37,44 @@ export function getModelContext(): ModelContext | null {
 /** True when the current browser exposes the WebMCP API. */
 export function isWebMCPSupported(): boolean {
   return getModelContext() !== null;
+}
+
+/**
+ * True when the WebMCP *testing* API (`navigator.modelContextTesting`) is
+ * available — i.e. Chrome with the `#enable-webmcp-testing` flag, as used by
+ * the Model Context Tool Inspector extension and the DevTools WebMCP panel.
+ */
+export function isWebMCPTestingSupported(): boolean {
+  return (
+    typeof navigator !== "undefined" &&
+    Boolean((navigator as { modelContextTesting?: unknown }).modelContextTesting)
+  );
+}
+
+/**
+ * Validates a tool definition with developer-friendly errors. Throws in
+ * development; in production it reports to the console and returns false so
+ * a bad definition can never crash the page for end users.
+ */
+function validateTool(tool: WebMCPTool<never> | WebMCPTool): boolean {
+  let problem: string | null = null;
+  if (typeof tool.name !== "string" || tool.name.length === 0) {
+    problem = "Tool name must be a non-empty string.";
+  } else if (typeof tool.description !== "string" || tool.description.length === 0) {
+    problem = `Tool "${tool.name}" needs a non-empty description.`;
+  } else if (tool.inputSchema !== undefined) {
+    try {
+      JSON.stringify(tool.inputSchema);
+    } catch {
+      problem = `Tool "${tool.name}" has a non-JSON-serializable inputSchema.`;
+    }
+  }
+  if (problem === null) return true;
+  if (typeof process !== "undefined" && process.env?.NODE_ENV !== "production") {
+    throw new TypeError(`WebMCP: ${problem}`);
+  }
+  reportError(`WebMCP: ${problem}`, undefined);
+  return false;
 }
 
 /** Wraps plain text in the MCP `CallToolResult` content shape. */
@@ -116,6 +158,7 @@ export function registerTool<TArgs = Record<string, unknown>>(
   tool: WebMCPTool<TArgs>,
   options: Omit<RegisterToolOptions, "signal"> & { signal?: AbortSignal } = {},
 ): () => void {
+  if (!validateTool(tool as WebMCPTool)) return () => {};
   const context = getModelContext();
   if (!context) return () => {};
 
@@ -163,6 +206,7 @@ export function registerTool<TArgs = Record<string, unknown>>(
  * Returns an `unregister` function for the provided tools.
  */
 export function provideContext(tools: Array<WebMCPTool<never> | WebMCPTool>): () => void {
+  tools = tools.filter(validateTool);
   const context = getModelContext();
   if (!context) return () => {};
 

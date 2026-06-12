@@ -180,6 +180,50 @@ import { toolFormAttrs, toolParamAttrs } from "@cr4yfish/react-web-mcp";
 </form>
 ```
 
+### Any UI library, zero adapters: `useFormTool`
+
+Component libraries like Material UI or Ant Design often don't forward the declarative `tool*` attributes to the DOM. `useFormTool` sidesteps the problem entirely: it derives the input schema from the **rendered form element** — so it works with any library, portals included, with no per-library adapters.
+
+```tsx
+import { useRef } from "react";
+import { useFormTool } from "@cr4yfish/react-web-mcp";
+
+function CheckoutForm() {
+  const formRef = useRef<HTMLFormElement>(null);
+
+  useFormTool({
+    formRef,
+    name: "fill-checkout",
+    description: "Fills out the checkout form with shipping details.",
+    // autoSubmit: false (default) → agent fills, user reviews & submits
+  });
+
+  return (
+    <form ref={formRef}>
+      <TextField name="street" label="Street" required />
+      <TextField name="zip" label="ZIP code" required inputProps={{ pattern: "\\d{5}" }} />
+      <Select name="country" label="Country">…</Select>
+      <Button type="submit">Order</Button>
+    </form>
+  );
+}
+```
+
+- The schema comes from `form.elements`: control `name`s, types (`number`→number, `checkbox`→boolean, radio groups & `<select>`→enums), `required`, `min`/`max`/`maxLength`/`pattern`, and descriptions from `toolparamdescription`/`aria-label`/`<label for>`/`placeholder`. Password, hidden, and file inputs are never exposed.
+- When the agent calls the tool, fields are filled via native value setters + `input`/`change` events, so controlled React inputs update correctly. Then: user review (default), `autoSubmit: true` (`requestSubmit()`), or your own `onToolCall(args, form)`.
+- Dynamic forms: call the returned `refresh()` after fields change.
+
+### Batches of tools: `useWebMCPTools`
+
+```tsx
+useWebMCPTools([
+  { name: "get-cart", description: "…", annotations: { readOnlyHint: true }, execute: () => cart },
+  { name: "add-to-cart", description: "…", inputSchema, execute: addToCart },
+]);
+```
+
+Registers each tool individually (not via `provideContext`), so multiple components can own batches without clobbering each other.
+
 ### React to agent activity: `useWebMCPEvent`
 
 ```tsx
@@ -219,12 +263,16 @@ const clear = provideContext([toolA, toolB, toolC]);
 | Export | Kind | Purpose |
 | --- | --- | --- |
 | `useWebMCPTool(options)` | hook | Register an imperative tool for the component's lifetime |
+| `useWebMCPTools(tools, options?)` | hook | Register a batch of tools (individually, composable) |
+| `useFormTool(options)` | hook | Tool with a schema derived from a rendered `<form>` (works with MUI/AntD/any library) |
 | `useWebMCP()` | hook | `{ isSupported, modelContext }` |
 | `useWebMCPEvent(name, handler)` | hook | Subscribe to `toolchange` / `toolactivated` / `toolcanceled` |
 | `ToolForm` | component | `<form>` registered as a declarative tool, with `onAgentSubmit` |
 | `registerTool(tool, options?)` | function | Framework-agnostic registration; returns `unregister()` |
 | `provideContext(tools)` | function | Replace the page's whole toolset; returns `unregister()` |
 | `getModelContext()` / `isWebMCPSupported()` | function | Feature detection (SSR-safe) |
+| `isWebMCPTestingSupported()` | function | Detects the `#enable-webmcp-testing` flag / Tool Inspector API |
+| `extractFormSchema(form)` / `applyArgsToForm(form, args)` | function | DOM-based schema synthesis & agent-driven form filling |
 | `textResult(text, isError?)` / `jsonResult(value, maxLength?)` | function | Build MCP-shaped tool responses |
 | `toolFormAttrs(...)` / `toolParamAttrs(...)` | function | Declarative attribute bags for your own elements |
 | `WebMCPTool`, `ToolResponse`, `ToolAnnotations`, `JSONSchema`, `ModelContext`, … | types | Full typings, incl. `document.modelContext` global augmentation |

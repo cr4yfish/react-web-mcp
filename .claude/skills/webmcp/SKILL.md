@@ -183,10 +183,12 @@ import { registerTool, provideContext } from "@cr4yfish/react-web-mcp/vanilla"; 
 ```
 
 - `useWebMCPTool({ name, description, inputSchema?, outputSchema?, annotations?, exposedTo?, enabled?, execute })` — registers for the component lifetime; `execute` sees fresh closures without re-registration (ref-based); definition changes (deep-compared via JSON) re-register; `enabled:false` unregisters in place. Returns `{ isRegistered }`.
+- `useWebMCPTools(tools, { enabled? })` — batch registration; tools are registered individually (composable across components), unlike `provideContext` which replaces the page's toolset.
+- `useFormTool({ formRef, name, description, autoSubmit?, onToolCall?, annotations?, enabled? })` — derives the input schema from the **rendered DOM form** (`extractFormSchema`), so it works with MUI/AntD/shadcn/portals without adapters; on invocation fills controls via native setters + input/change events (`applyArgsToForm`, React-controlled-input compatible), then user-review (default) / `requestSubmit()` (`autoSubmit`) / custom `onToolCall`. Skips password/hidden/file inputs. Returns `{ isRegistered, refresh }` — call `refresh()` after dynamic field changes.
 - `useWebMCP()` → `{ isSupported, modelContext }`, SSR/hydration-safe (false until mounted).
 - `useWebMCPEvent("toolchange" | "toolactivated" | "toolcanceled", handler)`.
 - `<ToolForm name description autoSubmit? onAgentSubmit?>` — declarative form wrapper; `onAgentSubmit(formData, event)` answers agent submissions via `respondWith` without navigation.
-- Core (`/vanilla`): `getModelContext`, `isWebMCPSupported`, `registerTool` (returns `unregister()`; wraps execute with normalization + error-to-`isError`), `provideContext`, `textResult`, `jsonResult` (truncates at 50k chars), `toolFormAttrs`, `toolParamAttrs`.
+- Core (`/vanilla`): `getModelContext`, `isWebMCPSupported`, `isWebMCPTestingSupported` (detects `navigator.modelContextTesting` from the testing flag / Tool Inspector), `registerTool` (returns `unregister()`; wraps execute with normalization + error-to-`isError`; validates name/description/schema — throws in dev, console+no-op in prod), `provideContext`, `textResult`, `jsonResult` (truncates at 50k chars), `toolFormAttrs`, `toolParamAttrs`, `extractFormSchema`, `applyArgsToForm`.
 - Everything is a no-op without browser support — safe to ship unconditionally.
 - Next.js: main entry has `"use client"`; call hooks from client components. Add the origin-trial `<meta>` in the root layout for production.
 

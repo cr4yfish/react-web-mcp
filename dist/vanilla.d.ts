@@ -173,6 +173,12 @@ declare const DEFAULT_MAX_RESULT_LENGTH = 50000;
 declare function getModelContext(): ModelContext | null;
 /** True when the current browser exposes the WebMCP API. */
 declare function isWebMCPSupported(): boolean;
+/**
+ * True when the WebMCP *testing* API (`navigator.modelContextTesting`) is
+ * available — i.e. Chrome with the `#enable-webmcp-testing` flag, as used by
+ * the Model Context Tool Inspector extension and the DevTools WebMCP panel.
+ */
+declare function isWebMCPTestingSupported(): boolean;
 /** Wraps plain text in the MCP `CallToolResult` content shape. */
 declare function textResult(text: string, isError?: boolean): ToolResponse;
 /**
@@ -221,4 +227,30 @@ declare function toolFormAttrs(options: {
  */
 declare function toolParamAttrs(description: string): Record<string, string>;
 
-export { DEFAULT_MAX_RESULT_LENGTH, type JSONSchema, type ModelContext, type RegisterToolOptions, type ToolAnnotations, type ToolExecuteResult, type ToolResponse, type ToolResponseContent, type WebMCPSubmitEvent, type WebMCPTool, getModelContext, isWebMCPSupported, jsonResult, normalizeResult, provideContext, registerTool, textResult, toolFormAttrs, toolParamAttrs };
+/**
+ * DOM-based form tooling: derive a WebMCP input schema from a real
+ * `<form>` element and fill it back in from tool arguments.
+ *
+ * Because this inspects the rendered DOM (not the React element tree), it
+ * works with any UI library that ultimately renders native form controls —
+ * Material UI, Ant Design, shadcn/ui, portals, custom wrappers — without
+ * per-library adapters.
+ */
+
+/**
+ * Builds a JSON Schema describing a form's named controls, mirroring what
+ * the declarative WebMCP API synthesizes natively: control `name`s become
+ * properties, `required` controls become required properties, and
+ * `toolparamdescription` / `aria-label` / `<label for>` / `placeholder`
+ * provide descriptions. Hidden, file, button, and password controls are
+ * skipped (passwords must never reach an agent).
+ */
+declare function extractFormSchema(form: HTMLFormElement): JSONSchema;
+/**
+ * Fills a form's named controls from a tool-arguments object, dispatching
+ * the events React (and other frameworks) need to pick the values up.
+ * Returns the names of arguments that could not be applied.
+ */
+declare function applyArgsToForm(form: HTMLFormElement, args: Record<string, unknown>): string[];
+
+export { DEFAULT_MAX_RESULT_LENGTH, type JSONSchema, type ModelContext, type RegisterToolOptions, type ToolAnnotations, type ToolExecuteResult, type ToolResponse, type ToolResponseContent, type WebMCPSubmitEvent, type WebMCPTool, applyArgsToForm, extractFormSchema, getModelContext, isWebMCPSupported, isWebMCPTestingSupported, jsonResult, normalizeResult, provideContext, registerTool, textResult, toolFormAttrs, toolParamAttrs };

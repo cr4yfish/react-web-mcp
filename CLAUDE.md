@@ -21,7 +21,8 @@ React hooks/components for the **WebMCP** standard. Zero runtime dependencies, R
 
 - `src/types.ts` — WebMCP type definitions + global augmentation (`document.modelContext`, `navigator.modelContext`) + React JSX augmentation for the declarative attributes (`toolname`, `tooldescription`, `toolautosubmit`, `toolparamdescription`).
 - `src/core.ts` — framework-agnostic core: `getModelContext`, `registerTool`, `provideContext`, result normalization (`textResult`, `jsonResult`, `normalizeResult`), declarative attribute helpers. Every function is a safe no-op without browser support / during SSR.
-- `src/react/` — `useWebMCPTool`, `useWebMCP`, `useWebMCPEvent`, `ToolForm`.
+- `src/form.ts` — DOM-based form tooling: `extractFormSchema` (form → JSON Schema; skips password/hidden/file) and `applyArgsToForm` (fills controls via native setters + input/change events for React compatibility).
+- `src/react/` — `useWebMCPTool`, `useWebMCPTools`, `useFormTool`, `useWebMCP`, `useWebMCPEvent`, `ToolForm`.
 - `src/index.ts` — main entry (gets a `"use client"` banner at build time); `src/vanilla.ts` — React-free entry (`@cr4yfish/react-web-mcp/vanilla`, no directive).
 - `tests/` — vitest suites + `mock-model-context.ts` (in-memory ModelContext mock).
 - `.claude/skills/webmcp/` — the deep-dive WebMCP skill. Read it before changing API surface.
