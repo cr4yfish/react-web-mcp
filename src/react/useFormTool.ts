@@ -51,6 +51,12 @@ export interface UseFormToolOptions {
  * The schema is captured when the form mounts (and when the definition or
  * `enabled` changes). For forms whose fields change dynamically, call the
  * returned `refresh()` after the change.
+ *
+ * Unlike declarative form tools, this imperative tool answers the agent
+ * immediately on every call (even in the review flow), so it is immune to
+ * the browser's one-pending-invocation-per-form hazard that makes
+ * `ToolForm` default to `autoSubmit` — `autoSubmit` can safely stay `false`
+ * here.
  */
 export function useFormTool(options: UseFormToolOptions): {
   isRegistered: boolean;

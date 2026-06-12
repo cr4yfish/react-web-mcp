@@ -41,9 +41,24 @@ export interface ToolFormProps
   /** Tool description for the agent (declarative `tooldescription` attribute). */
   description: string;
   /**
-   * Allow the agent to submit the form itself. When `false` (default), the
-   * browser fills the form and the user reviews + submits manually — the
-   * human-in-the-loop default of the declarative API.
+   * Whether the agent may submit the form itself (renders the
+   * `toolautosubmit` attribute).
+   *
+   * **Defaults to `true`**, deliberately flipping the platform's
+   * human-in-the-loop default, because review mode is currently hazardous:
+   * without `toolautosubmit`, the browser keeps the invocation pending while
+   * the user reviews the agent-filled form — and Chromium tracks only ONE
+   * pending invocation per form. If the agent re-invokes the tool in the
+   * meantime (observed in practice within seconds), the previous
+   * invocation's reply callback is dropped, the page's WebMCP channel
+   * closes, and **every tool on the page silently dies until reload**. The
+   * page cannot intercept that drop. Auto-submission answers each invocation
+   * immediately, so the dangerous pending state never exists.
+   *
+   * Set `autoSubmit={false}` only for consequential actions that genuinely
+   * need user review — keep `pendingTimeoutMs` enabled and turn on
+   * `indicators` so the user actually submits — and accept that a rapid
+   * re-invoke can still kill the page's tool channel.
    */
   autoSubmit?: boolean;
   /**
@@ -124,7 +139,7 @@ export const ToolForm = forwardRef<HTMLFormElement, ToolFormProps>(
     {
       name,
       description,
-      autoSubmit,
+      autoSubmit = true,
       onAgentSubmit,
       onSubmit,
       indicators,

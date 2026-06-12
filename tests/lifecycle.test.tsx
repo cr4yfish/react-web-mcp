@@ -182,6 +182,32 @@ describe("visual indicators", () => {
   });
 });
 
+describe("ToolForm autoSubmit default", () => {
+  // Review mode (no toolautosubmit) is hazardous in current Chromium: one
+  // pending invocation per form, and a re-invoke drops the previous reply
+  // and kills the page's WebMCP channel. The safe default is therefore
+  // auto-submission; review mode is an explicit opt-in.
+  it("renders toolautosubmit by default", () => {
+    installMockModelContext();
+    const { getByTestId } = render(
+      <ToolForm name="t" description="d" data-testid="form">
+        <button type="submit">go</button>
+      </ToolForm>,
+    );
+    expect((getByTestId("form") as HTMLFormElement).hasAttribute("toolautosubmit")).toBe(true);
+  });
+
+  it("omits toolautosubmit when autoSubmit is explicitly false", () => {
+    installMockModelContext();
+    const { getByTestId } = render(
+      <ToolForm name="t" description="d" autoSubmit={false} data-testid="form">
+        <button type="submit">go</button>
+      </ToolForm>,
+    );
+    expect((getByTestId("form") as HTMLFormElement).hasAttribute("toolautosubmit")).toBe(false);
+  });
+});
+
 describe("ToolForm invocation lifecycle", () => {
   it("tracks pending state through onPendingChange and clears it when answered", async () => {
     installMockModelContext();

@@ -188,8 +188,13 @@ synthesizes the input schema from the form controls.
 </ToolForm>
 ```
 
-- Without `autoSubmit`, the agent fills the form and the **user** reviews and
-  submits — the human-in-the-loop default.
+- **`autoSubmit` defaults to `true`** (the agent submits the form itself).
+  This deliberately flips the platform's human-in-the-loop default: review
+  mode keeps the invocation pending until the user submits, Chromium tracks
+  only one pending invocation per form, and a re-invoke drops the previous
+  reply and closes the page's WebMCP channel (every tool dies until reload).
+  Opt into review mode per form with `autoSubmit={false}` for consequential
+  actions, and keep `pendingTimeoutMs`/`indicators` on when you do.
 - `onAgentSubmit(formData, event)` handles agent-invoked submissions without
   navigation: the default action is prevented and your return value is piped
   back to the agent via `SubmitEvent.respondWith()`. User submissions behave as

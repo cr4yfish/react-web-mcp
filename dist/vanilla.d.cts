@@ -220,6 +220,12 @@ declare function provideContext(tools: Array<WebMCPTool<never> | WebMCPTool>): (
  * Builds the declarative WebMCP attribute bag for a `<form>` element:
  * `toolname`, `tooldescription`, and optionally `toolautosubmit`. Spread it
  * onto a form in any framework: `<form {...toolFormAttrs({...})}>`.
+ *
+ * Strongly consider `autoSubmit: true`: a form without `toolautosubmit`
+ * keeps its invocation pending until the user submits, and in current
+ * Chromium a re-invoke on top of a pending invocation drops its reply and
+ * closes the page's WebMCP channel (every tool dies until reload). `ToolForm`
+ * defaults to auto-submission for exactly this reason.
  */
 declare function toolFormAttrs(options: {
     name: string;

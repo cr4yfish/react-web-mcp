@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.3.3",
+    "date": "2026-06-12",
+    "released": false,
+    "changes": [
+      {
+        "type": "changed",
+        "text": "ToolForm autoSubmit now defaults to true (renders toolautosubmit), deliberately flipping the platform's human-in-the-loop default: review mode keeps the invocation pending until the user submits, Chromium tracks only one pending invocation per form, and a re-invoke drops the previous reply and closes the page's WebMCP channel — confirmed in practice to silently kill every tool until reload; opt back into review mode per form with autoSubmit={false} (keep pendingTimeoutMs and indicators on)"
+      }
+    ]
+  },
+  {
     "version": "0.3.2",
     "date": "2026-06-12",
     "released": true,
