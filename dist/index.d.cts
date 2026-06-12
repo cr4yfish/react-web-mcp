@@ -323,6 +323,14 @@ interface ToolFormProps extends Omit<FormHTMLAttributes<HTMLFormElement>, "tooln
  *
  * In browsers without WebMCP support this renders a perfectly ordinary form —
  * the extra attributes are simply ignored.
+ *
+ * The rendered form is `noValidate`: an agent-filled control that fails native
+ * HTML constraint validation (e.g. a `required` field the agent left empty)
+ * would otherwise block submission entirely — the `submit` event would never
+ * fire, `respondWith` would never be called, and the agent's invocation would
+ * hang unanswered, silencing every later tool call on the page. Human submits
+ * are re-validated in {@link handleSubmit} via `reportValidity()`, so users
+ * still get the browser's inline validation UI.
  */
 declare const ToolForm: react.ForwardRefExoticComponent<ToolFormProps & react.RefAttributes<HTMLFormElement>>;
 

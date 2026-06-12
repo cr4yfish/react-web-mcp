@@ -11,6 +11,21 @@
     ]
   },
   {
+    "version": "0.3.1",
+    "date": "2026-06-12",
+    "released": false,
+    "changes": [
+      {
+        "type": "fixed",
+        "text": "ToolForm renders the form noValidate so an agent-filled control that fails native HTML validation (e.g. an empty required field) can no longer silently block submission — previously the submit event never fired, respondWith was never called, and the unanswered invocation hung and silenced every later tool call on the page; human submits are re-validated via reportValidity() so their inline-error UX is unchanged"
+      },
+      {
+        "type": "fixed",
+        "text": "ToolForm now always answers an agent-invoked submit when onAgentSubmit is set, even if a consumer's onSubmit calls preventDefault — so a stray preventDefault can no longer strand the invocation"
+      }
+    ]
+  },
+  {
     "version": "0.3.0",
     "date": "2026-06-12",
     "released": true,
