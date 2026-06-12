@@ -6,6 +6,10 @@
     "changes": [
       {
         "type": "added",
+        "text": "doc/ folder bundled into the published package (index, API reference, WebMCP standard reference, llms.txt) so coding agents in consuming repos can read the docs offline from node_modules"
+      },
+      {
+        "type": "added",
         "text": "useFormTool: register a tool whose input schema is derived from the rendered DOM form — works with MUI, AntD, shadcn/ui, portals, any library that renders native controls"
       },
       {
