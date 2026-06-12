@@ -30,6 +30,7 @@ export type WebMCPDiagnosticCode =
   | "agent-submit-navigation"
   | "invocation-pending"
   | "invocation-overlap"
+  | "invocation-reinvoked"
   | "invocation-timeout"
   | "invocation-canceled";
 

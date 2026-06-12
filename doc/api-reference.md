@@ -215,6 +215,16 @@ synthesizes the input schema from the form controls.
   and the channel stays healthy.
 - `onPendingChange?: (pending: boolean) => void` — observe the pending state
   (true from agent fill until answered/cancelled/reset).
+- `reinvokeGuard?: boolean` (default `true`) — automatic protection against
+  the re-invoke channel kill: a re-invocation's form fill dispatches `input`
+  events before the browser overwrites the old reply slot; the guard detects
+  the programmatic fill (non-user `input` event on an unfocused control while
+  a review is pending), snapshots all control values, `reset()`s the form so
+  the OLD invocation is answered with a proper "cancelled" error, restores
+  the values, and lets the new invocation proceed. Emits
+  `invocation-reinvoked` (warn). Caveat: a `reset`-event listener calling
+  `preventDefault()` defeats it; a misfire (e.g. browser autofill during a
+  pending review) costs only the pending invocation — values are preserved.
 - `resetAfterAgentSubmit?: boolean` — `reset()` the form one tick after an
   agent submission was answered (deferred so it cannot race the browser's
   response delivery).

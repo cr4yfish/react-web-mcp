@@ -7,6 +7,10 @@
       {
         "type": "changed",
         "text": "ToolForm autoSubmit now defaults to true (renders toolautosubmit), deliberately flipping the platform's human-in-the-loop default: review mode keeps the invocation pending until the user submits, Chromium tracks only one pending invocation per form, and a re-invoke drops the previous reply and closes the page's WebMCP channel — confirmed in practice to silently kill every tool until reload; opt back into review mode per form with autoSubmit={false} (keep pendingTimeoutMs and indicators on)"
+      },
+      {
+        "type": "added",
+        "text": "Re-invoke guard on ToolForm (reinvokeGuard, default true): when the agent re-invokes a review-mode tool while an invocation is still pending, the guard intercepts the new fill's input events — the one window before Chromium drops the old reply — snapshots all control values, cancels the old invocation cleanly via form.reset(), restores the values, and lets the new invocation proceed; the channel-killing callback drop can no longer happen, and an invocation-reinvoked warning diagnostic is emitted"
       }
     ]
   },

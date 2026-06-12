@@ -715,6 +715,32 @@ function injectWebMCPIndicatorStyles() {
 // src/react/ToolForm.tsx
 var import_react = require("react");
 var DEFAULT_PENDING_TIMEOUT_MS = 12e4;
+function snapshotFormControls(form) {
+  const out = [];
+  for (const el of Array.from(form.elements)) {
+    if (el instanceof HTMLSelectElement) {
+      out.push({ kind: "select", el, selected: Array.from(el.options).map((o) => o.selected) });
+    } else if (el instanceof HTMLTextAreaElement) {
+      out.push({ kind: "value", el, value: el.value, checked: false });
+    } else if (el instanceof HTMLInputElement && el.type !== "file") {
+      out.push({ kind: "value", el, value: el.value, checked: el.checked });
+    }
+  }
+  return out;
+}
+function restoreFormControls(snapshot) {
+  for (const entry of snapshot) {
+    if (entry.kind === "select") {
+      entry.selected.forEach((selected, i) => {
+        const option = entry.el.options[i];
+        if (option) option.selected = selected;
+      });
+    } else {
+      entry.el.value = entry.value;
+      if (entry.el instanceof HTMLInputElement) entry.el.checked = entry.checked;
+    }
+  }
+}
 var ToolForm = (0, import_react.forwardRef)(
   function ToolForm2({
     name,
@@ -726,13 +752,20 @@ var ToolForm = (0, import_react.forwardRef)(
     pendingTimeoutMs = DEFAULT_PENDING_TIMEOUT_MS,
     resetAfterAgentSubmit,
     onPendingChange,
+    reinvokeGuard = true,
     children,
     ...rest
   }, forwardedRef) {
     const formRef = (0, import_react.useRef)(null);
     const pendingRef = (0, import_react.useRef)({ pending: false, since: 0, timer: null });
-    const latest = (0, import_react.useRef)({ name, pendingTimeoutMs, resetAfterAgentSubmit, onPendingChange });
-    latest.current = { name, pendingTimeoutMs, resetAfterAgentSubmit, onPendingChange };
+    const latest = (0, import_react.useRef)({
+      name,
+      pendingTimeoutMs,
+      resetAfterAgentSubmit,
+      onPendingChange,
+      reinvokeGuard
+    });
+    latest.current = { name, pendingTimeoutMs, resetAfterAgentSubmit, onPendingChange, reinvokeGuard };
     const setRefs = (node) => {
       formRef.current = node;
       if (typeof forwardedRef === "function") forwardedRef(node);
@@ -812,7 +845,7 @@ var ToolForm = (0, import_react.forwardRef)(
           reportWebMCP({
             level: "error",
             code: "invocation-overlap",
-            message: "Tool was re-invoked while a previous invocation was still awaiting the user's submit. Chromium keeps one pending invocation per form and DROPS the previous reply callback \u2014 this can close the page's WebMCP channel and silently disable every tool until reload. Answer or cancel invocations promptly (keep pendingTimeoutMs enabled, or use autoSubmit for low-stakes forms).",
+            message: "Tool was re-invoked while a previous invocation was still awaiting the user's submit, and the re-invoke guard did not catch the fill. Chromium keeps one pending invocation per form and DROPS the previous reply callback \u2014 this can close the page's WebMCP channel and silently disable every tool until reload. Keep reinvokeGuard and pendingTimeoutMs enabled, or use autoSubmit (the default) for low-stakes forms.",
             toolName: latest.current.name,
             detail: { pendingSinceMs: Date.now() - pendingRef.current.since }
           });
@@ -851,10 +884,39 @@ var ToolForm = (0, import_react.forwardRef)(
         clearPending();
       };
       form?.addEventListener("reset", onReset);
+      let guardRestoring = false;
+      const onGuardInput = (event) => {
+        if (!latest.current.reinvokeGuard || guardRestoring) return;
+        if (!pendingRef.current.pending) return;
+        const guardedForm = formRef.current;
+        const target = event.target;
+        if (!guardedForm || !(target instanceof Element)) return;
+        if (typeof InputEvent !== "undefined" && event instanceof InputEvent && event.inputType) {
+          return;
+        }
+        if (target === guardedForm.ownerDocument.activeElement) return;
+        const snapshot = snapshotFormControls(guardedForm);
+        reportWebMCP({
+          level: "warn",
+          code: "invocation-reinvoked",
+          message: "Tool re-invoked while a previous invocation was awaiting the user's submit \u2014 auto-cancelled the previous invocation via form.reset() during the new fill, before the browser could drop its reply (which would have killed the page's WebMCP channel). The new invocation proceeds normally. Disable with reinvokeGuard={false}.",
+          toolName: latest.current.name,
+          detail: { pendingSinceMs: Date.now() - pendingRef.current.since }
+        });
+        guardRestoring = true;
+        try {
+          guardedForm.reset();
+          restoreFormControls(snapshot);
+        } finally {
+          guardRestoring = false;
+        }
+      };
+      form?.addEventListener("input", onGuardInput, true);
       return () => {
         removeActivated();
         removeCanceled();
         form?.removeEventListener("reset", onReset);
+        form?.removeEventListener("input", onGuardInput, true);
         const state = pendingRef.current;
         if (state.timer) clearTimeout(state.timer);
         state.timer = null;
