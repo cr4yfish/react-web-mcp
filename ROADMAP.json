@@ -6,8 +6,7 @@
     "items": [
       "Auto form tools: one page-level hook discovers every rendered form and registers a tool per form (schema, name, and description derived from labels, headings, and aria attributes)",
       "Action tools from interactive elements: derive simple no-input tools from buttons and links with accessible names",
-      "Dev overlay listing the page's registered tools, their schemas, and recent invocations live",
-      "Lifecycle safety & observability: stale-invocation watchdog and overlap diagnostics for declarative forms, verbose mode + diagnostics stream, opt-in visual indicators for agent-filled forms"
+      "Dev overlay listing the page's registered tools, their schemas, and recent invocations live"
     ]
   },
   {
