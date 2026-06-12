@@ -15,6 +15,7 @@ export {
   toolFormAttrs,
   toolParamAttrs,
 } from "./core";
+export { validateToolInput } from "./validate";
 export { applyArgsToForm, extractFormSchema } from "./form";
 export type {
   JSONSchema,

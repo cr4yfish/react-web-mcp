@@ -89,6 +89,14 @@ interface WebMCPTool<TArgs = Record<string, unknown>> {
     outputSchema?: JSONSchema;
     /** Behavioral hints for agents/browsers. */
     annotations?: ToolAnnotations;
+    /**
+     * Whether this library validates incoming arguments against `inputSchema`
+     * before calling `execute` (the agent is an untrusted client — browsers do
+     * NOT enforce the schema). Invalid calls are answered with an `isError`
+     * response listing the problems instead of reaching `execute`.
+     * Default `true`; set to `false` to receive raw arguments unchecked.
+     */
+    validateInput?: boolean;
     /** The tool implementation, invoked by the browser on behalf of an agent. */
     execute: (args: TArgs) => ToolExecuteResult | Promise<ToolExecuteResult>;
 }
@@ -229,6 +237,34 @@ declare function toolFormAttrs(options: {
  * `<input {...toolParamAttrs("The city to search in")} name="city" />`.
  */
 declare function toolParamAttrs(description: string): Record<string, string>;
+
+/**
+ * Minimal, dependency-free JSON Schema validation for tool inputs.
+ *
+ * The WebMCP spec treats `inputSchema` as documentation — browsers do not
+ * enforce it, and the agent is an untrusted client that may call a tool with
+ * any arguments at any time. This validator closes that gap for the common
+ * keywords so tools don't have to hand-roll `typeof` checks in `execute`.
+ *
+ * It is deliberately conservative: only keywords it fully understands are
+ * checked, and any schema node using composition (`$ref`, `anyOf`, `oneOf`,
+ * `allOf`, `not`, `if`) is skipped entirely rather than risking a false
+ * rejection. Unknown keywords are ignored, exactly like a missing schema.
+ */
+
+/**
+ * Validates a tool's arguments against its `inputSchema` and returns a list
+ * of human-readable problems (empty when the arguments are valid, when there
+ * is no schema, or when the schema only uses constructs this validator
+ * doesn't understand).
+ *
+ * Checked keywords: `type` (incl. arrays of types), `required`, `properties`
+ * (recursive), `additionalProperties: false`, `enum`, `const`, `minLength`,
+ * `maxLength`, `pattern`, `minimum`, `maximum`, `exclusiveMinimum`,
+ * `exclusiveMaximum`, `minItems`, `maxItems`, and single-schema `items`.
+ * Nodes using `$ref` / `anyOf` / `oneOf` / `allOf` / `not` / `if` are skipped.
+ */
+declare function validateToolInput(args: unknown, schema: JSONSchema | undefined): string[];
 
 /**
  * DOM-based form tooling: derive a WebMCP input schema from a real
@@ -401,6 +437,11 @@ interface UseWebMCPToolOptions<TArgs = Record<string, unknown>> {
     /** Set to `false` to unregister the tool without unmounting. Default `true`. */
     enabled?: boolean;
     /**
+     * Validate incoming arguments against `inputSchema` before `execute` runs
+     * (invalid calls get an `isError` response). Default `true`.
+     */
+    validateInput?: boolean;
+    /**
      * The tool implementation. Always sees the latest render's closure — you
      * do NOT need to memoize it; changing it does not re-register the tool.
      */
@@ -420,4 +461,4 @@ declare function useWebMCPTool<TArgs = Record<string, unknown>>(options: UseWebM
     isRegistered: boolean;
 };
 
-export { DEFAULT_MAX_RESULT_LENGTH, type JSONSchema, type ModelContext, type RegisterToolOptions, type ToolAnnotations, type ToolExecuteResult, ToolForm, type ToolFormProps, type ToolResponse, type ToolResponseContent, type UseFormToolOptions, type UseWebMCPToolOptions, type WebMCPEventName, type WebMCPSubmitEvent, type WebMCPTool, applyArgsToForm, extractFormSchema, getModelContext, isWebMCPSupported, isWebMCPTestingSupported, jsonResult, normalizeResult, provideContext, registerTool, textResult, toolFormAttrs, toolParamAttrs, useFormTool, useWebMCP, useWebMCPEvent, useWebMCPTool, useWebMCPTools };
+export { DEFAULT_MAX_RESULT_LENGTH, type JSONSchema, type ModelContext, type RegisterToolOptions, type ToolAnnotations, type ToolExecuteResult, ToolForm, type ToolFormProps, type ToolResponse, type ToolResponseContent, type UseFormToolOptions, type UseWebMCPToolOptions, type WebMCPEventName, type WebMCPSubmitEvent, type WebMCPTool, applyArgsToForm, extractFormSchema, getModelContext, isWebMCPSupported, isWebMCPTestingSupported, jsonResult, normalizeResult, provideContext, registerTool, textResult, toolFormAttrs, toolParamAttrs, useFormTool, useWebMCP, useWebMCPEvent, useWebMCPTool, useWebMCPTools, validateToolInput };

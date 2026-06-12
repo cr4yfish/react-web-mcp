@@ -100,6 +100,14 @@ export interface WebMCPTool<TArgs = Record<string, unknown>> {
   outputSchema?: JSONSchema;
   /** Behavioral hints for agents/browsers. */
   annotations?: ToolAnnotations;
+  /**
+   * Whether this library validates incoming arguments against `inputSchema`
+   * before calling `execute` (the agent is an untrusted client — browsers do
+   * NOT enforce the schema). Invalid calls are answered with an `isError`
+   * response listing the problems instead of reaching `execute`.
+   * Default `true`; set to `false` to receive raw arguments unchecked.
+   */
+  validateInput?: boolean;
   /** The tool implementation, invoked by the browser on behalf of an agent. */
   execute: (args: TArgs) => ToolExecuteResult | Promise<ToolExecuteResult>;
 }

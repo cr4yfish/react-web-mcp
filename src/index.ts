@@ -11,6 +11,7 @@ export {
   toolFormAttrs,
   toolParamAttrs,
 } from "./core";
+export { validateToolInput } from "./validate";
 export { applyArgsToForm, extractFormSchema } from "./form";
 export { ToolForm, type ToolFormProps } from "./react/ToolForm";
 export { useFormTool, type UseFormToolOptions } from "./react/useFormTool";

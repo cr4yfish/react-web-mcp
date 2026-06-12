@@ -23,6 +23,11 @@ export interface UseWebMCPToolOptions<TArgs = Record<string, unknown>> {
   /** Set to `false` to unregister the tool without unmounting. Default `true`. */
   enabled?: boolean;
   /**
+   * Validate incoming arguments against `inputSchema` before `execute` runs
+   * (invalid calls get an `isError` response). Default `true`.
+   */
+  validateInput?: boolean;
+  /**
    * The tool implementation. Always sees the latest render's closure — you
    * do NOT need to memoize it; changing it does not re-register the tool.
    */
@@ -50,6 +55,7 @@ export function useWebMCPTool<TArgs = Record<string, unknown>>(
     annotations,
     exposedTo,
     enabled = true,
+    validateInput,
     execute,
   } = options;
 
@@ -69,8 +75,9 @@ export function useWebMCPTool<TArgs = Record<string, unknown>>(
         outputSchema,
         annotations,
         exposedTo,
+        validateInput,
       }),
-    [name, description, inputSchema, outputSchema, annotations, exposedTo],
+    [name, description, inputSchema, outputSchema, annotations, exposedTo, validateInput],
   );
 
   useEffect(() => {

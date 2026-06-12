@@ -54,7 +54,8 @@ const { isRegistered } = useWebMCPTool({
 ```
 
 Options: `name` (required), `description` (required), `inputSchema?`,
-`outputSchema?`, `annotations?`, `exposedTo?`, `enabled?`, `execute` (required).
+`outputSchema?`, `annotations?`, `exposedTo?`, `enabled?`, `validateInput?`,
+`execute` (required).
 
 Behavior:
 
@@ -70,6 +71,14 @@ Behavior:
   (truncated at 50,000 chars by default), `ToolResponse` objects pass through,
   thrown errors become `{ isError: true }` responses the agent can read and
   recover from.
+- Incoming arguments are validated against `inputSchema` before `execute` runs
+  (`validateToolInput`): schema-violating calls are answered with a readable
+  `{ isError: true }` response and never reach your code. Checked keywords:
+  `type`, `required`, `properties` (recursive), `additionalProperties: false`,
+  `enum`, `const`, `minLength`/`maxLength`, `pattern`, `minimum`/`maximum`
+  (incl. exclusive), `minItems`/`maxItems`, single-schema `items`. Nodes using
+  `$ref`/`anyOf`/`oneOf`/`allOf`/`not`/`if` are skipped rather than guessed at.
+  Opt out per tool with `validateInput: false`.
 - Declaring an `outputSchema` disables normalization — your raw return value is
   passed through for the browser to validate.
 
@@ -199,9 +208,10 @@ For your own `<form>`/controls instead of `ToolForm` (TypeScript JSX types for
 Importable from any framework or plain scripts; no React import, no `"use client"`.
 
 - `registerTool(tool, { signal?, exposedTo? }) → unregister()` — wraps `execute`
-  with result normalization + error-to-`isError`; validates name/description/
-  schema (throws in development, console-warns + no-ops in production). Returns
-  an `unregister()` function.
+  with input validation (see `useWebMCPTool` above; opt out with
+  `validateInput: false` on the tool), result normalization, and
+  error-to-`isError`; validates name/description/schema (throws in development,
+  console-warns + no-ops in production). Returns an `unregister()` function.
 - `provideContext(tools) → unregister()` — replaces the page's **entire**
   toolset in one call (e.g. after login).
 - `getModelContext()` — resolves `document.modelContext` first, then
@@ -212,6 +222,10 @@ Importable from any framework or plain scripts; no React import, no `"use client
 - `textResult(text, isError?)` / `jsonResult(value, maxLength?)` — build
   MCP-shaped `CallToolResult` responses (`jsonResult` truncates at 50,000 chars
   by default).
+- `validateToolInput(args, schema) → string[]` — the standalone input
+  validator: returns human-readable problems (empty when valid or when the
+  schema isn't validatable). Used internally by `registerTool`; exported for
+  custom flows.
 - `extractFormSchema(form)` — form → JSON Schema (skips password/hidden/file).
 - `applyArgsToForm(form, args)` — fill controls via native setters +
   `input`/`change` events (React-controlled-input compatible).
@@ -240,5 +254,6 @@ augmentation (`toolname`, `tooldescription`, `toolautosubmit`,
 | `isWebMCPTestingSupported()` | function | Detect the testing flag / Tool Inspector API |
 | `extractFormSchema(form)` / `applyArgsToForm(form, args)` | function | DOM schema synthesis & agent form filling |
 | `textResult(text, isError?)` / `jsonResult(value, maxLength?)` | function | Build MCP-shaped responses |
+| `validateToolInput(args, schema)` | function | Standalone input-schema validation; returns problem list |
 | `toolFormAttrs(...)` / `toolParamAttrs(...)` | function | Declarative attribute bags |
 | `WebMCPTool`, `ToolResponse`, `ToolAnnotations`, `JSONSchema`, `ModelContext`, … | types | Full typings + global augmentation |
