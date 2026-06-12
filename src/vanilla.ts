@@ -1,0 +1,27 @@
+/**
+ * React-free entry point: `import { registerTool } from "react-web-mcp/vanilla"`.
+ * Safe to import from server components and non-React code.
+ */
+export {
+  DEFAULT_MAX_RESULT_LENGTH,
+  getModelContext,
+  isWebMCPSupported,
+  jsonResult,
+  normalizeResult,
+  provideContext,
+  registerTool,
+  textResult,
+  toolFormAttrs,
+  toolParamAttrs,
+} from "./core";
+export type {
+  JSONSchema,
+  ModelContext,
+  RegisterToolOptions,
+  ToolAnnotations,
+  ToolExecuteResult,
+  ToolResponse,
+  ToolResponseContent,
+  WebMCPSubmitEvent,
+  WebMCPTool,
+} from "./types";

@@ -89,7 +89,10 @@ out
 
 # Nuxt.js build / generate output
 .nuxt
-dist
+
+# NOTE: dist/ is intentionally committed so the package can be installed
+# directly from git (github:cr4yfish/react-web-mcp) before it is published
+# to npm. Run `pnpm build` before committing source changes.
 
 # Gatsby files
 .cache/
