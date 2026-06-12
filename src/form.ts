@@ -139,7 +139,13 @@ export function extractFormSchema(form: HTMLFormElement): JSONSchema {
     if (group.some((control) => control.required)) required.push(name);
   }
 
-  const result: JSONSchema = { type: "object", properties };
+  // applyArgsToForm rejects fields the form doesn't have, so declare that in
+  // the schema — agents see it, and input validation reports unknown fields.
+  const result: JSONSchema = {
+    type: "object",
+    properties,
+    additionalProperties: false,
+  };
   if (required.length > 0) result.required = required;
   return result;
 }

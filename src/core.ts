@@ -9,6 +9,7 @@ import type {
   ToolResponse,
   WebMCPTool,
 } from "./types";
+import { validateToolInput } from "./validate";
 
 /** Default cap applied by {@link jsonResult} so oversized tool outputs don't
  * blow past agent context limits. */
@@ -127,9 +128,24 @@ export function normalizeResult(value: ToolExecuteResult): ToolResponse {
 }
 
 function wrapExecute<TArgs>(tool: WebMCPTool<TArgs>): WebMCPTool<TArgs> {
+  // `validateInput` is a library-level switch, not part of the WebMCP tool
+  // descriptor — keep it out of what reaches the browser.
+  const { validateInput = true, ...descriptor } = tool;
   return {
-    ...tool,
+    ...descriptor,
     async execute(args: TArgs) {
+      // The agent is an untrusted client and browsers don't enforce
+      // inputSchema — reject schema-violating calls with a readable isError
+      // response so `execute` only ever sees arguments matching its types.
+      if (validateInput) {
+        const problems = validateToolInput(args, tool.inputSchema);
+        if (problems.length > 0) {
+          return textResult(
+            `Invalid arguments for tool "${tool.name}": ${problems.join("; ")}`,
+            true,
+          );
+        }
+      }
       try {
         const result = await tool.execute(args);
         // Tools with an outputSchema return structured values the browser

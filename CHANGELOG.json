@@ -1,5 +1,28 @@
 [
   {
+    "version": "0.3.0",
+    "date": "2026-06-12",
+    "released": false,
+    "changes": [
+      {
+        "type": "added",
+        "text": "Automatic input validation: registerTool / useWebMCPTool / useWebMCPTools / provideContext now validate incoming arguments against inputSchema before execute runs and answer schema-violating calls with a readable isError response (browsers don't enforce the schema); opt out per tool with validateInput: false"
+      },
+      {
+        "type": "added",
+        "text": "validateToolInput(args, schema) exported from both entry points: the standalone conservative JSON-Schema-subset validator returning a human-readable problem list"
+      },
+      {
+        "type": "changed",
+        "text": "extractFormSchema (and thus useFormTool) marks derived schemas additionalProperties: false, so unknown-field calls are rejected at validation time with the offending field named"
+      },
+      {
+        "type": "fixed",
+        "text": "ToolForm: a throwing or rejecting onAgentSubmit now reaches the agent as an isError response — previously a synchronous throw escaped before respondWith was called, leaving the prevented invocation unanswered and silencing every later tool call on the page, and async rejections became unhandled rejections"
+      }
+    ]
+  },
+  {
     "version": "0.2.0",
     "date": "2026-06-12",
     "released": true,

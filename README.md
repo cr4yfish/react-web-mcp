@@ -135,6 +135,7 @@ Behavior:
 - Re-registers **only** when the definition changes (name, description, schemas, annotations, `exposedTo`, `enabled`) — inline `inputSchema` object literals are fine.
 - `enabled: false` unregisters without unmounting (e.g. tie tools to auth state).
 - Return values are normalized: strings → text content, objects → JSON text (truncated at 50 000 chars by default), `ToolResponse` objects pass through, thrown errors become `isError` responses the agent can read and recover from.
+- Incoming arguments are **validated against `inputSchema`** before `execute` runs — the agent is an untrusted client and browsers don't enforce the schema. Schema-violating calls are answered with a readable `isError` response (so the agent can self-correct) and never reach your code: no more hand-rolled `typeof` checks for types, `required`, `enum`, `min`/`maxLength`, ranges. Conservative by design (composition keywords like `anyOf`/`$ref` are skipped, unknown keywords ignored); opt out per tool with `validateInput: false`.
 - Declare an `outputSchema` and your raw return value is passed through unnormalized for the browser to validate.
 
 ### Declarative forms: `ToolForm`
