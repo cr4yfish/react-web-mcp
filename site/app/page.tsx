@@ -5,6 +5,7 @@ import { Footer } from "@/components/site/footer";
 import { Hero } from "@/components/site/hero";
 import { LiveDemo } from "@/components/site/live-demo";
 import { Nav } from "@/components/site/nav";
+import { Roadmap } from "@/components/site/roadmap";
 import { SkillPromo } from "@/components/site/skill-promo";
 
 export default function Page() {
@@ -17,6 +18,7 @@ export default function Page() {
         <LiveDemo />
         <CodeTabs />
         <SkillPromo />
+        <Roadmap />
         <Changelog />
         <Footer />
       </main>

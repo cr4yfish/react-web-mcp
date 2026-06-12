@@ -24,6 +24,10 @@ Format (newest version first):
 
 Rules: append `changes` entries to the current unreleased version block (create the next semver block with `"released": false` if none exists); set `"released": true` when that version is published to npm; keep entries one terse sentence each; never rewrite history of released versions.
 
+## Roadmap
+
+`ROADMAP.json` at the repo root holds the milestone plan up to v1.0 (each milestone automates more, v1.0 = fully automatic conversion of React apps into WebMCP tool surfaces). The site imports and renders it like the changelog. Format (ascending order, oldest milestone first): `{ "version", "title", "status": "done" | "in-progress" | "planned", "items": ["…"] }`. Keep statuses in sync with releases: when a milestone version ships, set it to `"done"` and the next one to `"in-progress"`; reshape future milestones freely, but don't rewrite `"done"` ones.
+
 ## CI & releasing
 
 - `.github/workflows/ci.yml` (push to main + PRs): `pnpm audit --audit-level=high`, type-check, tests, build, and a stale-`dist/` check.

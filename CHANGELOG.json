@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.4.0",
+    "date": "2026-06-12",
+    "released": false,
+    "changes": [
+      {
+        "type": "added",
+        "text": "ROADMAP.json at the repo root, rendered automatically on the site like the changelog: milestone plan up to v1.0 (fully automatic conversion of React apps into WebMCP tool surfaces), statuses updated as releases land"
+      }
+    ]
+  },
+  {
     "version": "0.3.0",
     "date": "2026-06-12",
     "released": true,
