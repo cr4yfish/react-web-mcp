@@ -484,7 +484,14 @@ var ToolForm = forwardRef(
       event.preventDefault();
       const data = new FormData(event.currentTarget);
       native.respondWith(
-        Promise.resolve(onAgentSubmit(data, event)).then(normalizeResult)
+        (async () => {
+          try {
+            return normalizeResult(await onAgentSubmit(data, event));
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            return textResult(`Tool "${name}" failed: ${message}`, true);
+          }
+        })()
       );
     };
     return createElement(

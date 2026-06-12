@@ -5,7 +5,7 @@ import {
   createElement,
   forwardRef,
 } from "react";
-import { normalizeResult } from "../core";
+import { normalizeResult, textResult } from "../core";
 import type { ToolExecuteResult, WebMCPSubmitEvent } from "../types";
 
 export interface ToolFormProps
@@ -60,8 +60,20 @@ export const ToolForm = forwardRef<HTMLFormElement, ToolFormProps>(
       // respondWith requires preventDefault to be called first.
       event.preventDefault();
       const data = new FormData(event.currentTarget);
+      // The handed-over promise must ALWAYS fulfill: a synchronous throw or
+      // an async rejection from onAgentSubmit would otherwise leave the
+      // prevented invocation without a response — hanging the agent's call
+      // (and with it the page's message channel) instead of surfacing a
+      // readable isError result.
       native.respondWith(
-        Promise.resolve(onAgentSubmit(data, event)).then(normalizeResult),
+        (async () => {
+          try {
+            return normalizeResult(await onAgentSubmit(data, event));
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            return textResult(`Tool "${name}" failed: ${message}`, true);
+          }
+        })(),
       );
     };
 

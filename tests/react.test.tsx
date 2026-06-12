@@ -95,7 +95,7 @@ describe("useWebMCPEvent", () => {
 describe("ToolForm", () => {
   function renderForm(
     mock?: MockModelContext,
-    onAgentSubmit?: () => string,
+    onAgentSubmit?: () => string | Promise<string>,
   ) {
     return render(
       <ToolForm
@@ -135,6 +135,49 @@ describe("ToolForm", () => {
     expect(respondWith).toHaveBeenCalledTimes(1);
     const response = (await respondWith.mock.calls[0]?.[0]) as ToolResponse;
     expect(response.content[0]?.text).toBe("found 3 flights");
+  });
+
+  // A prevented agent invocation that never gets a respondWith answer hangs
+  // the agent's call and poisons the page's message channel — so the promise
+  // handed to respondWith must always fulfill, whatever onAgentSubmit does.
+  it("answers a synchronously throwing onAgentSubmit with an isError response", async () => {
+    const onAgentSubmit = vi.fn(() => {
+      throw new Error("message required");
+    });
+    const { getByTestId } = renderForm(undefined, onAgentSubmit);
+    const form = getByTestId("form") as HTMLFormElement;
+
+    const respondWith = vi.fn();
+    const event = new Event("submit", { bubbles: true, cancelable: true });
+    Object.assign(event, { agentInvoked: true, respondWith });
+    act(() => {
+      form.dispatchEvent(event);
+    });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(respondWith).toHaveBeenCalledTimes(1);
+    const response = (await respondWith.mock.calls[0]?.[0]) as ToolResponse;
+    expect(response.isError).toBe(true);
+    expect(response.content[0]?.text).toContain('Tool "search-flights" failed');
+    expect(response.content[0]?.text).toContain("message required");
+  });
+
+  it("answers a rejecting onAgentSubmit with an isError response", async () => {
+    const onAgentSubmit = vi.fn(() => Promise.reject(new Error("backend down")));
+    const { getByTestId } = renderForm(undefined, onAgentSubmit);
+    const form = getByTestId("form") as HTMLFormElement;
+
+    const respondWith = vi.fn();
+    const event = new Event("submit", { bubbles: true, cancelable: true });
+    Object.assign(event, { agentInvoked: true, respondWith });
+    act(() => {
+      form.dispatchEvent(event);
+    });
+
+    expect(respondWith).toHaveBeenCalledTimes(1);
+    const response = (await respondWith.mock.calls[0]?.[0]) as ToolResponse;
+    expect(response.isError).toBe(true);
+    expect(response.content[0]?.text).toContain("backend down");
   });
 
   it("leaves user-driven submissions alone", () => {
