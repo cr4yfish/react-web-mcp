@@ -22,6 +22,11 @@ Key facts for code generation:
 - [npm package](https://www.npmjs.com/package/@cr4yfish/react-web-mcp): published releases
 - [CHANGELOG.json](https://github.com/cr4yfish/react-web-mcp/blob/main/CHANGELOG.json): machine-readable changelog
 
+## web-mcp-skill (framework-agnostic)
+
+- [web-mcp-skill](https://github.com/cr4yfish/web-mcp-skill): an agent skill (install with `npx skills add cr4yfish/web-mcp-skill`) that turns a coding agent into a WebMCP expert. Framework-agnostic — covers the full standard for any web app (vanilla JS, React, Vue, Svelte, Angular), not just React.
+- [/skill page](https://react-web-mcp.vercel.app/skill): overview of what the skill covers (imperative + declarative APIs, security model, best practices, testing/evals, WebMCP vs. backend MCP).
+
 ## WebMCP standard
 
 - [Chrome WebMCP docs](https://developer.chrome.com/docs/ai/webmcp): imperative API, declarative API, best practices, security, evals
