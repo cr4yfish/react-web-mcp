@@ -260,6 +260,80 @@ describe("ToolForm invocation lifecycle", () => {
     expect((getByTestId("form") as HTMLFormElement).hasAttribute("data-webmcp-active")).toBe(false);
   });
 
+  // Immediate review mode (the default for autoSubmit={false}): every
+  // invocation is answered right away with a staged acknowledgement, so no
+  // browser-side pending state can ever be clobbered by a re-invoke.
+  describe("immediate review mode (default)", () => {
+    function renderImmediate(onAgentSubmit?: () => string) {
+      installMockModelContext();
+      const pendingChanges: boolean[] = [];
+      const utils = render(
+        <ToolForm
+          name="send-feedback"
+          description="d"
+          autoSubmit={false}
+          onAgentSubmit={onAgentSubmit}
+          onPendingChange={(p) => pendingChanges.push(p)}
+          data-testid="form"
+        >
+          <input name="message" />
+          <button type="submit">go</button>
+        </ToolForm>,
+      );
+      const form = utils.getByTestId("form") as HTMLFormElement;
+      const requestSubmit = vi.spyOn(form, "requestSubmit").mockImplementation(() => {});
+      return { ...utils, form, requestSubmit, pendingChanges };
+    }
+
+    it("requests the staged answer submit on toolactivated and keeps the review state", () => {
+      const { form, requestSubmit, pendingChanges } = renderImmediate();
+      act(() => {
+        dispatchToolEvent("toolactivated", "send-feedback");
+      });
+      expect(requestSubmit).toHaveBeenCalledTimes(1);
+      expect(form.getAttribute("data-webmcp-active")).toBe("true");
+      expect(pendingChanges).toEqual([true]);
+    });
+
+    it("answers the agent submit with the staged message, not onAgentSubmit", async () => {
+      const onAgentSubmit = vi.fn(() => "real result");
+      const { form } = renderImmediate(onAgentSubmit);
+      act(() => {
+        dispatchToolEvent("toolactivated", "send-feedback");
+      });
+      const { respondWith, event } = agentSubmit(form);
+      expect(event.defaultPrevented).toBe(true);
+      const response = (await respondWith.mock.calls[0]?.[0]) as ToolResponse;
+      expect(response.content[0]?.text).toContain("review and submit it manually");
+      expect(onAgentSubmit).not.toHaveBeenCalled();
+      // The staged answer does NOT end the review — the user still has to act.
+      expect(form.getAttribute("data-webmcp-active")).toBe("true");
+    });
+
+    it("does not report an overlap on a repeat invocation (nothing pending browser-side)", () => {
+      const { requestSubmit } = renderImmediate();
+      act(() => {
+        dispatchToolEvent("toolactivated", "send-feedback");
+        dispatchToolEvent("toolactivated", "send-feedback");
+      });
+      expect(requestSubmit).toHaveBeenCalledTimes(2); // both invocations answered
+      expect(diagnostics.some((d) => d.code === "invocation-overlap")).toBe(false);
+    });
+
+    it("clears the review state on the user's real submit", () => {
+      const { form, pendingChanges } = renderImmediate();
+      act(() => {
+        dispatchToolEvent("toolactivated", "send-feedback");
+      });
+      const event = new Event("submit", { bubbles: true, cancelable: true });
+      act(() => {
+        form.dispatchEvent(event); // plain human submit: no agentInvoked
+      });
+      expect(form.hasAttribute("data-webmcp-active")).toBe(false);
+      expect(pendingChanges).toEqual([true, false]);
+    });
+  });
+
   // The re-invoke guard simulates Chromium's behavior: a re-invocation's
   // form fill dispatches plain (non-InputEvent) input events on unfocused
   // controls BEFORE the old reply slot is overwritten — form.reset() in that
@@ -269,7 +343,14 @@ describe("ToolForm invocation lifecycle", () => {
       installMockModelContext();
       vi.spyOn(console, "warn").mockImplementation(() => {});
       const utils = render(
-        <ToolForm name="send-feedback" description="d" autoSubmit={false} {...extra} data-testid="form">
+        <ToolForm
+          name="send-feedback"
+          description="d"
+          autoSubmit={false}
+          reviewResponse="on-submit"
+          {...extra}
+          data-testid="form"
+        >
           <input name="message" defaultValue="" />
           <select name="rating" defaultValue="5">
             {["1", "5"].map((v) => (
@@ -310,16 +391,20 @@ describe("ToolForm invocation lifecycle", () => {
       );
     });
 
-    it("ignores real user typing (InputEvent with inputType)", () => {
+    it("treats even an InputEvent on an unfocused control as a fill", () => {
+      // Real typing always targets the focused control; an InputEvent on an
+      // unfocused control can only be programmatic, so the guard must act —
+      // whatever event class the browser's fill uses.
       const { form, message } = renderGuarded();
       const reset = vi.spyOn(form, "reset");
       act(() => {
-        message.value = "user typed";
+        message.value = "programmatic";
         message.dispatchEvent(
-          new InputEvent("input", { bubbles: true, inputType: "insertText" }),
+          new InputEvent("input", { bubbles: true, inputType: "insertReplacementText" }),
         );
       });
-      expect(reset).not.toHaveBeenCalled();
+      expect(reset).toHaveBeenCalledTimes(1);
+      expect(message.value).toBe("programmatic");
     });
 
     it("ignores changes on the focused control", () => {
@@ -336,7 +421,13 @@ describe("ToolForm invocation lifecycle", () => {
     it("does nothing while no invocation is pending", () => {
       installMockModelContext();
       const { getByTestId } = render(
-        <ToolForm name="t" description="d" autoSubmit={false} data-testid="form">
+        <ToolForm
+          name="t"
+          description="d"
+          autoSubmit={false}
+          reviewResponse="on-submit"
+          data-testid="form"
+        >
           <input name="message" />
           <button type="submit">go</button>
         </ToolForm>,
@@ -360,11 +451,17 @@ describe("ToolForm invocation lifecycle", () => {
     });
   });
 
-  it("reports an overlapping invocation as an error diagnostic", () => {
+  it("reports an overlapping invocation as an error diagnostic (on-submit review)", () => {
     installMockModelContext();
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     render(
-      <ToolForm name="send-feedback" description="d" data-testid="form">
+      <ToolForm
+        name="send-feedback"
+        description="d"
+        autoSubmit={false}
+        reviewResponse="on-submit"
+        data-testid="form"
+      >
         <button type="submit">go</button>
       </ToolForm>,
     );

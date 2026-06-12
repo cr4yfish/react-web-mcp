@@ -405,12 +405,38 @@ interface ToolFormProps extends Omit<FormHTMLAttributes<HTMLFormElement>, "tooln
      * page cannot intercept that drop. Auto-submission answers each invocation
      * immediately, so the dangerous pending state never exists.
      *
-     * Set `autoSubmit={false}` only for consequential actions that genuinely
-     * need user review — keep `pendingTimeoutMs` enabled and turn on
-     * `indicators` so the user actually submits — and accept that a rapid
-     * re-invoke can still kill the page's tool channel.
+     * Set `autoSubmit={false}` for consequential actions that genuinely need
+     * user review. Review mode is channel-safe by default via
+     * {@link ToolFormProps.reviewResponse} (`"immediate"`): each invocation is
+     * answered right away with a staged "form filled, awaiting user review"
+     * response, so nothing is ever left pending browser-side.
      */
     autoSubmit?: boolean;
+    /**
+     * How review mode (`autoSubmit={false}`) answers the agent:
+     *
+     * - `"immediate"` (default): the invocation is answered **immediately**
+     *   with a staged `"Form filled out. The user must review and submit it
+     *   manually."` response — the same semantics as `useFormTool`. Nothing is
+     *   ever left pending browser-side, so the one-pending-invocation channel
+     *   kill (see {@link autoSubmit}) is structurally impossible; a double
+     *   invocation simply answers twice. The user's review submit then
+     *   completes as a **normal form submission** (`agentInvoked` is false;
+     *   handle it in `onSubmit`), and `onAgentSubmit` is not called. The
+     *   pending state exposed via `indicators`/`onPendingChange` remains until
+     *   the user submits or the form resets.
+     *
+     * - `"on-submit"`: the platform-native flow — the invocation stays pending
+     *   until the user submits, and the agent receives the real, user-approved
+     *   result via `onAgentSubmit`. Hazardous in current Chromium: a re-invoke
+     *   while pending drops the previous reply and can kill every WebMCP tool
+     *   on the page until reload. The re-invoke guard and `pendingTimeoutMs`
+     *   watchdog mitigate this, but a re-invoke whose fill changes **no**
+     *   control values (identical arguments) is invisible to the page and
+     *   cannot be intercepted. Use only when the agent truly needs the final
+     *   submitted data.
+     */
+    reviewResponse?: "immediate" | "on-submit";
     /**
      * Handles agent-invoked submissions without navigating: the default form
      * action is prevented and the handler's (possibly async) return value is
@@ -454,25 +480,30 @@ interface ToolFormProps extends Omit<FormHTMLAttributes<HTMLFormElement>, "tooln
      */
     onPendingChange?: (pending: boolean) => void;
     /**
-     * Automatic re-invoke guard for review-mode forms (default `true`).
+     * Automatic re-invoke guard for `reviewResponse="on-submit"` forms
+     * (default `true`; inert in the other modes, which are channel-safe by
+     * construction).
      *
      * When the agent re-invokes the tool while a previous invocation is still
      * awaiting the user's submit, Chromium drops the previous invocation's
      * reply and the page's WebMCP channel dies (see {@link autoSubmit}). The
      * guard exploits the one window the page gets: the new invocation's form
      * fill dispatches `input` events *before* the browser overwrites the old
-     * reply slot. On a high-confidence fill signal (a programmatic — non-user —
-     * `input` event on an unfocused control while a review is pending), the
-     * guard snapshots every control, calls `form.reset()` — which makes the
-     * browser answer the OLD invocation with a proper "cancelled" error,
-     * keeping the channel alive — and restores the values so the new fill
-     * completes intact. Emits an `invocation-reinvoked` warning diagnostic.
+     * reply slot. On a fill signal (an `input` event on an unfocused control
+     * while a review is pending — user interactions target the focused
+     * control), the guard snapshots every control, calls `form.reset()` —
+     * which makes the browser answer the OLD invocation with a proper
+     * "cancelled" error, keeping the channel alive — and restores the values
+     * so the new fill completes intact. Emits an `invocation-reinvoked`
+     * warning diagnostic.
      *
-     * Caveats: it must not be combined with a `reset`-event listener that
-     * calls `preventDefault()` (a cancelled reset skips the browser-side
-     * cancellation), and a misfire (e.g. browser autofill writing to unfocused
-     * controls during a pending review) costs only the pending invocation —
-     * values are preserved.
+     * Limits: a re-invoke whose fill changes no control values (identical
+     * arguments) dispatches no events and CANNOT be caught — the
+     * `invocation-overlap` error then reports the damage after the fact.
+     * Don't combine with a `reset`-event listener that calls
+     * `preventDefault()`. A misfire (e.g. browser autofill writing to
+     * unfocused controls during a pending review) costs only the pending
+     * invocation — values are preserved.
      */
     reinvokeGuard?: boolean;
     children?: ReactNode;
