@@ -242,6 +242,21 @@ From [Chrome's guidance](https://developer.chrome.com/docs/ai/webmcp/best-practi
 7. **Treat agents as another client, not a trusted principal.** Anything a tool allows, assume it will be called with arbitrary arguments at arbitrary times.
 8. **Evaluate.** Use the [WebMCP evals CLI](https://github.com/GoogleChromeLabs/webmcp-tools/tree/main/evals-cli) and the Chrome DevTools **WebMCP panel** to test that real models pick the right tools with the right arguments.
 
+## Security & supply chain
+
+WebMCP tools execute inside your page with your users' sessions — a compromised dependency in the tool-registration path could silently register, alter, or hijack tools. This package is built to keep that surface minimal and verifiable:
+
+- **Zero runtime dependencies.** The only thing `react-web-mcp` adds to your bundle is its own code; `react` is a peer dependency you already ship. No transitive packages can be compromised because there are none.
+- **Small, auditable codebase.** A few hundred lines of TypeScript in `src/` — review it in one sitting. What you audit is what runs: the committed `dist/` is checked in CI against a fresh build and fails the pipeline if it drifts from the source.
+- **Locked, audited installs.** The lockfile is committed; CI installs with `--frozen-lockfile` and runs `pnpm audit --audit-level=high` on every push and pull request (this covers dev dependencies — the runtime has none).
+- **CI-gated releases.** npm publishes happen only through the GitHub Actions release workflow, gated on the test suite and on the release tag matching `package.json`'s version, using a granular npm token scoped to this package. Once the repository is public, releases will also carry [npm provenance](https://docs.npmjs.com/generating-provenance-statements) so you can verify the published artifact was built from this repo (`npm audit signatures`).
+
+What you can do as a consumer:
+
+- Pin an exact version (or commit your lockfile) and review the small diff between releases — `dist/index.js` is readable output.
+- Run `npm audit signatures` in your own CI to verify registry signatures (and provenance attestations once available).
+- Remember the broader rule from the [WebMCP security guidance](https://developer.chrome.com/docs/ai/webmcp/secure-tools): *every* script you ship can touch `document.modelContext`, so the same supply-chain scrutiny applies to all third-party code on pages that register tools — not just this package.
+
 ## Testing your tools
 
 - **Chrome DevTools → WebMCP panel**: inspect registered tools, schemas, and a live invocation log; invoke tools manually or via built-in Gemini integration.
