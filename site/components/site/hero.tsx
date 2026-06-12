@@ -27,8 +27,11 @@ export function Hero() {
   };
 
   return (
-    <section className="bg-grid relative overflow-hidden">
-      <div className="mx-auto grid max-w-6xl gap-12 px-6 pb-20 pt-24 lg:grid-cols-2 lg:items-center lg:pt-32">
+    <section className="relative overflow-hidden">
+      {/* Backdrop on its own layer: the radial mask on .bg-grid would
+          otherwise fade the hero text along with the grid. */}
+      <div aria-hidden className="bg-grid absolute inset-0" />
+      <div className="relative mx-auto grid max-w-6xl gap-12 px-6 pb-20 pt-24 lg:grid-cols-2 lg:items-center lg:pt-32">
         <div>
           <motion.h1
             {...fadeUp}
