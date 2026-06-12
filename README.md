@@ -30,6 +30,11 @@ function TodoList() {
 
 That's it. While `<TodoList />` is mounted, any WebMCP-capable agent in the browser can add todos through your own application logic — state updates, UI, and user all stay in sync.
 
+> **Using an AI coding agent?** This package ships its full docs inside the
+> tarball, at `node_modules/@cr4yfish/react-web-mcp/doc/` (plus an `AGENTS.md`
+> pointer at the package root). Point your agent there to use the API and the
+> WebMCP standard reference offline — start with `doc/index.md` or `doc/llms.txt`.
+
 ---
 
 ## What is WebMCP?
