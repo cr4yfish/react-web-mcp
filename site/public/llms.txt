@@ -1,0 +1,34 @@
+# react-web-mcp
+
+> React hooks and components for WebMCP (Web Model Context Protocol) — the proposed W3C web standard that lets a web page expose its client-side functionality as structured tools that in-browser AI agents (Gemini in Chrome, Copilot in Edge) can discover and invoke. Published on npm as `@cr4yfish/react-web-mcp`. Zero runtime dependencies, React 18+ peer dependency, SSR-safe, MIT-licensed.
+
+Install: `npm install @cr4yfish/react-web-mcp`
+
+Key facts for code generation:
+
+- Import hooks/components from `@cr4yfish/react-web-mcp` (ships a "use client" directive); import the React-free core from `@cr4yfish/react-web-mcp/vanilla` (safe in server components and plain scripts).
+- `useWebMCPTool({ name, description, inputSchema?, outputSchema?, annotations?, exposedTo?, enabled?, execute })` registers a tool while the component is mounted. `execute` may close over props/state freely — it always sees the latest values and changing it never re-registers. Returns `{ isRegistered }`.
+- `useWebMCPTools(tools, { enabled? })` registers a batch (individually, composable across components).
+- `useFormTool({ formRef, name, description, autoSubmit?, onToolCall?, annotations?, enabled? })` derives the tool's input schema from a rendered `<form>` element's controls — works with any UI library (MUI, AntD, shadcn/ui). Agent calls fill the form via native setters + input/change events; without `autoSubmit` the user reviews and submits (human-in-the-loop). Returns `{ isRegistered, refresh }`.
+- `useWebMCP()` returns `{ isSupported, modelContext }` (false during SSR/hydration). `useWebMCPEvent("toolchange" | "toolactivated" | "toolcanceled", handler)` subscribes to ModelContext events.
+- `<ToolForm name description autoSubmit? onAgentSubmit?>` renders a declarative WebMCP form (`toolname`/`tooldescription` attributes); `onAgentSubmit(formData, event)` answers agent submissions via `SubmitEvent.respondWith()` without navigation. Spread `toolParamAttrs("description")` onto controls.
+- Core functions: `registerTool(tool, { signal?, exposedTo? })` returns an `unregister()` function; `provideContext(tools)` replaces the page toolset; `textResult(text, isError?)` and `jsonResult(value, maxLength?)` build MCP-shaped responses; `isWebMCPSupported()`, `isWebMCPTestingSupported()`, `getModelContext()`, `extractFormSchema(form)`, `applyArgsToForm(form, args)`.
+- Behavior guarantees: every primitive is a no-op without browser support; tool results are normalized to MCP `CallToolResult` content (strings → text, objects → JSON, truncated at 50,000 chars) unless the tool declares an `outputSchema`; thrown errors become `{ isError: true }` responses; the context resolves `document.modelContext` first (Chrome 150+ spec surface) with deprecated `navigator.modelContext` fallback; password, hidden, and file inputs are never exposed in form schemas.
+- WebMCP availability: Chrome 146+ behind chrome://flags/#enable-webmcp-testing, Chrome 149+ via origin trial, Edge 147+ natively.
+
+## Docs
+
+- [README](https://github.com/cr4yfish/react-web-mcp#readme): full usage guide, API reference, best practices, security notes
+- [npm package](https://www.npmjs.com/package/@cr4yfish/react-web-mcp): published releases
+- [CHANGELOG.json](https://github.com/cr4yfish/react-web-mcp/blob/main/CHANGELOG.json): machine-readable changelog
+
+## WebMCP standard
+
+- [Chrome WebMCP docs](https://developer.chrome.com/docs/ai/webmcp): imperative API, declarative API, best practices, security, evals
+- [Spec & explainer](https://github.com/webmachinelearning/webmcp): W3C Web Machine Learning CG proposal
+- [Official demos & tools](https://github.com/GoogleChromeLabs/webmcp-tools): reference demos, evals CLI, tool inspector
+
+## Examples
+
+- [genie-demo /test/webmcp](https://github.com/cr4yfish/genie-demo): production Next.js consumer with imperative tools, a declarative form, and an invocation log
+- This website registers `add-item`, `clear-list`, and `set-accent-color` as live WebMCP tools — it is itself a working example.

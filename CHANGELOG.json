@@ -47,6 +47,14 @@
       {
         "type": "fixed",
         "text": "Site: hero text no longer fades out — the grid backdrop's radial mask moved to its own layer instead of masking the whole section"
+      },
+      {
+        "type": "added",
+        "text": "Site: llms.txt at the site root describing the package API for LLM consumers"
+      },
+      {
+        "type": "fixed",
+        "text": "Site: pin the Vercel framework preset via site/vercel.json and document that Root Directory must be set to site/ (root builds fail with 'No Output Directory named public')"
       }
     ]
   },
