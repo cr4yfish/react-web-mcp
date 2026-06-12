@@ -158,6 +158,8 @@ declare module "react" {
         toolname?: string;
         /** WebMCP declarative API: natural-language description of the form tool. */
         tooldescription?: string;
+        /** WebMCP declarative API: optional human-readable title for the form tool. */
+        tooltitle?: string;
         /** WebMCP declarative API: lets the agent submit without user review. */
         toolautosubmit?: boolean | "";
     }
@@ -166,11 +168,6 @@ declare module "react" {
         toolparamdescription?: string;
     }
 }
-
-/**
- * Framework-agnostic WebMCP core. Safe to import anywhere (including SSR /
- * Node) — every function degrades to a no-op when WebMCP is unavailable.
- */
 
 /** Default cap applied by {@link jsonResult} so oversized tool outputs don't
  * blow past agent context limits. */
@@ -292,6 +289,96 @@ declare function extractFormSchema(form: HTMLFormElement): JSONSchema;
  */
 declare function applyArgsToForm(form: HTMLFormElement, args: Record<string, unknown>): string[];
 
+/**
+ * Verbose mode + diagnostics stream. The package must never fail silently:
+ * every lifecycle anomaly is funneled through {@link reportWebMCP}, which
+ * always notifies subscribers and always sends warnings/errors to the
+ * console. Info-level lifecycle logs (registrations, invocations, responses)
+ * reach the console only in verbose mode — enable it on debug/test pages
+ * with `setWebMCPVerbose(true)`.
+ */
+type WebMCPDiagnosticLevel = "info" | "warn" | "error";
+type WebMCPDiagnosticCode = "unsupported" | "register" | "unregister" | "register-failed" | "execute" | "execute-result" | "execute-error" | "invalid-arguments" | "result-truncated" | "invalid-definition" | "provide-context-failed" | "agent-submit" | "agent-response" | "agent-response-error" | "respondwith-missing" | "agent-submit-navigation" | "invocation-pending" | "invocation-overlap" | "invocation-timeout" | "invocation-canceled";
+interface WebMCPDiagnostic {
+    level: WebMCPDiagnosticLevel;
+    code: WebMCPDiagnosticCode;
+    /** Human-readable, self-contained message. */
+    message: string;
+    /** Name of the tool this diagnostic concerns, when known. */
+    toolName?: string;
+    /** Extra structured context (argument keys, durations, results, errors). */
+    detail?: unknown;
+}
+type DiagnosticListener = (diagnostic: WebMCPDiagnostic) => void;
+/**
+ * Enables/disables verbose mode. When enabled, info-level lifecycle
+ * diagnostics (tool registration, invocations, agent submissions, responses)
+ * are logged to the console with a `[webmcp]` prefix. Warnings and errors
+ * are logged regardless of this flag.
+ */
+declare function setWebMCPVerbose(enabled: boolean): void;
+/** True when verbose mode is on. */
+declare function isWebMCPVerbose(): boolean;
+/**
+ * Subscribes to every diagnostic the package emits (all levels, independent
+ * of verbose mode) — ideal for rendering an on-page debug log next to the
+ * tools being tested. Returns an unsubscribe function.
+ */
+declare function onWebMCPDiagnostic(listener: DiagnosticListener): () => void;
+
+/** Spec-facing event names accepted by this package. */
+type WebMCPEventName = "toolchange" | "toolactivated" | "toolcanceled";
+/** A WebMCP lifecycle event. Chromium's `WebMCPEvent` carries the name of
+ * the tool concerned in `toolName` (empty/undefined on older builds). */
+type WebMCPToolEvent = Event & {
+    readonly toolName?: string;
+};
+/**
+ * Subscribes to a WebMCP lifecycle event on every surface current
+ * implementations use (window + ModelContext, all name variants), invoking
+ * `handler` exactly once per event. Returns an unsubscribe function.
+ * No-op (returns a no-op unsubscriber) during SSR or without WebMCP.
+ */
+declare function addWebMCPEventListener(name: WebMCPEventName, handler: (event: WebMCPToolEvent) => void): () => void;
+
+/**
+ * Opt-in visual indicators for declarative form tools.
+ *
+ * While an agent invocation is pending (the agent filled the form and the
+ * user is expected to review and submit it), the browser applies the CSS
+ * pseudo-classes `:tool-form-active` (on the form) and `:tool-submit-active`
+ * (on its submit button). This module ships a small default stylesheet for
+ * that state, plus a `data-webmcp-active` attribute fallback maintained by
+ * `<ToolForm indicators>` for engines that don't support the pseudo-classes
+ * (the attribute also gives page CSS a stable hook).
+ *
+ * The selectors only match forms that opted in via the
+ * `data-webmcp-indicators` attribute, and use `:is()` so the unknown
+ * pseudo-class can't invalidate the whole rule in other browsers. Override
+ * the color with `--webmcp-indicator-color`, or write your own CSS against
+ * `:tool-form-active` / `[data-webmcp-active="true"]` instead.
+ */
+declare const WEBMCP_INDICATOR_CSS = "\nform[data-webmcp-indicators]:is(:tool-form-active, [data-webmcp-active=\"true\"]) {\n  outline: 2px solid var(--webmcp-indicator-color, #6d28d9);\n  outline-offset: 3px;\n}\nform[data-webmcp-indicators]:is(:tool-form-active, [data-webmcp-active=\"true\"])\n  :is(button[type=\"submit\"], input[type=\"submit\"]) {\n  outline: 2px solid var(--webmcp-indicator-color, #6d28d9);\n  outline-offset: 2px;\n}\n@media (prefers-reduced-motion: no-preference) {\n  form[data-webmcp-indicators]:is(:tool-form-active, [data-webmcp-active=\"true\"])\n    :is(button[type=\"submit\"], input[type=\"submit\"]) {\n    animation: webmcp-submit-pulse 1.2s ease-in-out infinite;\n  }\n}\n@keyframes webmcp-submit-pulse {\n  50% { outline-offset: 5px; }\n}\n";
+/**
+ * Injects the default indicator stylesheet once per document (refcounted).
+ * Returns a release function; the `<style>` element is removed when every
+ * caller has released. Safe no-op during SSR.
+ */
+declare function injectWebMCPIndicatorStyles(): () => void;
+
+/**
+ * How long an agent invocation may sit unanswered (form filled, waiting for
+ * the user's review submit) before the form auto-cancels it via `reset()`.
+ *
+ * Chromium keeps exactly ONE pending invocation per declarative form. If the
+ * tool is invoked again while one is pending, the browser silently drops the
+ * previous invocation's internal reply callback — which closes the page's
+ * WebMCP channel and kills EVERY tool on the page until reload. A stale
+ * pending invocation is therefore a landmine; `form.reset()` is the
+ * sanctioned page-side cancel (the agent receives a proper "cancelled by a
+ * form reset" error and the channel stays healthy).
+ */
+declare const DEFAULT_PENDING_TIMEOUT_MS = 120000;
 interface ToolFormProps extends Omit<FormHTMLAttributes<HTMLFormElement>, "toolname" | "tooldescription" | "toolautosubmit"> {
     /** Tool name registered for this form (declarative `toolname` attribute). */
     name: string;
@@ -311,6 +398,40 @@ interface ToolFormProps extends Omit<FormHTMLAttributes<HTMLFormElement>, "tooln
      * result shape. User-driven submissions are unaffected.
      */
     onAgentSubmit?: (data: FormData, event: FormEvent<HTMLFormElement>) => ToolExecuteResult | Promise<ToolExecuteResult>;
+    /**
+     * Opt-in visual indicators for the agent-filled/awaiting-review state:
+     * injects a small stylesheet (once per page) that highlights the form and
+     * its submit button via the native `:tool-form-active` pseudo-class, with a
+     * `data-webmcp-active="true"` attribute fallback maintained by this
+     * component. Override the color with `--webmcp-indicator-color`, or style
+     * those selectors yourself and leave this off.
+     */
+    indicators?: boolean;
+    /**
+     * Watchdog for stale invocations: when an agent invocation has been
+     * pending (form filled, no user submit) for this long, the form is
+     * `reset()`, which makes the browser cancel the invocation *properly* —
+     * the agent gets a "cancelled" error and, crucially, the page's WebMCP
+     * channel survives. Without it, a second invocation arriving on top of a
+     * stale one makes Chromium drop the old invocation's reply callback and
+     * silently disables every tool on the page until reload.
+     * Milliseconds; default {@link DEFAULT_PENDING_TIMEOUT_MS}. Set `0` to
+     * disable (not recommended).
+     */
+    pendingTimeoutMs?: number;
+    /**
+     * Reset the form after an agent submission has been answered, so the next
+     * invocation starts from a clean slate. The reset is deferred a tick so it
+     * can never race the browser's response delivery (a reset while the
+     * response is still in flight would cancel it). Default `false`.
+     */
+    resetAfterAgentSubmit?: boolean;
+    /**
+     * Observes the pending state (`true` while an agent has filled the form
+     * and a user review/submit is awaited; `false` once answered, cancelled,
+     * or reset). Useful for rendering custom "review this form" UI.
+     */
+    onPendingChange?: (pending: boolean) => void;
     children?: ReactNode;
 }
 /**
@@ -329,8 +450,14 @@ interface ToolFormProps extends Omit<FormHTMLAttributes<HTMLFormElement>, "tooln
  * would otherwise block submission entirely — the `submit` event would never
  * fire, `respondWith` would never be called, and the agent's invocation would
  * hang unanswered, silencing every later tool call on the page. Human submits
- * are re-validated in {@link handleSubmit} via `reportValidity()`, so users
+ * are re-validated in the submit handler via `reportValidity()`, so users
  * still get the browser's inline validation UI.
+ *
+ * Lifecycle safety: the component tracks the browser's `toolactivated` /
+ * `toolcanceled` events and the form's `reset` events to know when an
+ * invocation is pending, warns loudly when invocations overlap (the
+ * channel-killing scenario described on {@link ToolFormProps.pendingTimeoutMs}),
+ * and auto-cancels stale invocations via `form.reset()`.
  */
 declare const ToolForm: react.ForwardRefExoticComponent<ToolFormProps & react.RefAttributes<HTMLFormElement>>;
 
@@ -413,10 +540,8 @@ declare function useWebMCP(): {
     modelContext: ModelContext | null;
 };
 
-/** Events fired at the ModelContext object by the browser. */
-type WebMCPEventName = "toolchange" | "toolactivated" | "toolcanceled";
 /**
- * Subscribes to a ModelContext event:
+ * Subscribes to a WebMCP lifecycle event:
  *
  * - `"toolchange"` — the page's toolset changed (tools registered/unregistered).
  * - `"toolactivated"` — an agent ran a tool (for declarative form tools
@@ -424,10 +549,17 @@ type WebMCPEventName = "toolchange" | "toolactivated" | "toolcanceled";
  *   page can bring it to the user's attention for review).
  * - `"toolcanceled"` — the agent canceled an in-flight tool invocation.
  *
+ * Listeners are attached to every surface current implementations use:
+ * Chromium dispatches `toolactivated` and the cancel event (named
+ * `toolcancel` there) at the `window`, and only `toolchange` at the
+ * ModelContext object — this hook covers both targets and both cancel-event
+ * spellings, deduped per event. The event's `toolName` property (when the
+ * browser provides it) names the tool concerned.
+ *
  * The handler always sees the latest render's closure. No-op when WebMCP is
  * unavailable.
  */
-declare function useWebMCPEvent(event: WebMCPEventName, handler: (event: Event) => void): void;
+declare function useWebMCPEvent(event: WebMCPEventName, handler: (event: WebMCPToolEvent) => void): void;
 
 interface UseWebMCPToolOptions<TArgs = Record<string, unknown>> {
     /** Unique, descriptive tool name (e.g. `"add-todo"`). */
@@ -469,4 +601,4 @@ declare function useWebMCPTool<TArgs = Record<string, unknown>>(options: UseWebM
     isRegistered: boolean;
 };
 
-export { DEFAULT_MAX_RESULT_LENGTH, type JSONSchema, type ModelContext, type RegisterToolOptions, type ToolAnnotations, type ToolExecuteResult, ToolForm, type ToolFormProps, type ToolResponse, type ToolResponseContent, type UseFormToolOptions, type UseWebMCPToolOptions, type WebMCPEventName, type WebMCPSubmitEvent, type WebMCPTool, applyArgsToForm, extractFormSchema, getModelContext, isWebMCPSupported, isWebMCPTestingSupported, jsonResult, normalizeResult, provideContext, registerTool, textResult, toolFormAttrs, toolParamAttrs, useFormTool, useWebMCP, useWebMCPEvent, useWebMCPTool, useWebMCPTools, validateToolInput };
+export { DEFAULT_MAX_RESULT_LENGTH, DEFAULT_PENDING_TIMEOUT_MS, type JSONSchema, type ModelContext, type RegisterToolOptions, type ToolAnnotations, type ToolExecuteResult, ToolForm, type ToolFormProps, type ToolResponse, type ToolResponseContent, type UseFormToolOptions, type UseWebMCPToolOptions, WEBMCP_INDICATOR_CSS, type WebMCPDiagnostic, type WebMCPDiagnosticCode, type WebMCPDiagnosticLevel, type WebMCPEventName, type WebMCPSubmitEvent, type WebMCPTool, type WebMCPToolEvent, addWebMCPEventListener, applyArgsToForm, extractFormSchema, getModelContext, injectWebMCPIndicatorStyles, isWebMCPSupported, isWebMCPTestingSupported, isWebMCPVerbose, jsonResult, normalizeResult, onWebMCPDiagnostic, provideContext, registerTool, setWebMCPVerbose, textResult, toolFormAttrs, toolParamAttrs, useFormTool, useWebMCP, useWebMCPEvent, useWebMCPTool, useWebMCPTools, validateToolInput };

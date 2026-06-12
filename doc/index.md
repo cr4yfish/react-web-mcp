@@ -76,6 +76,13 @@ in this package is a safe no-op.
 - **Both context surfaces**: the package resolves `document.modelContext`
   (Chrome 150+ spec surface) first, with the deprecated `navigator.modelContext`
   as fallback.
+- **Never silent**: every failure or lifecycle anomaly is reported through the
+  diagnostics stream (`onWebMCPDiagnostic`) and the console; enable
+  `setWebMCPVerbose(true)` on debug pages for full lifecycle logging.
+- **Declarative lifecycle safety**: `ToolForm` watches `toolactivated`, warns
+  on overlapping invocations, and auto-cancels stale ones via `form.reset()`
+  (`pendingTimeoutMs`) so a hung invocation can never silently kill the page's
+  WebMCP channel.
 
 For the canonical, always-current copy of these docs see the
 [README](https://github.com/cr4yfish/react-web-mcp#readme).

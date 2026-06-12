@@ -1,7 +1,7 @@
 {
   "name": "@cr4yfish/react-web-mcp",
-  "version": "0.3.1",
-  "description": "React hooks and components for the WebMCP standard — expose your web app's functionality as tools for in-browser AI agents.",
+  "version": "0.3.2",
+  "description": "React hooks and components for the WebMCP standard \u2014 expose your web app's functionality as tools for in-browser AI agents.",
   "license": "MIT",
   "repository": {
     "type": "git",

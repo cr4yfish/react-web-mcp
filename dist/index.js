@@ -1,5 +1,42 @@
 "use client";
 
+// src/debug.ts
+var verbose = false;
+var listeners = /* @__PURE__ */ new Set();
+function setWebMCPVerbose(enabled) {
+  verbose = enabled;
+}
+function isWebMCPVerbose() {
+  return verbose;
+}
+function onWebMCPDiagnostic(listener) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+function reportWebMCP(diagnostic) {
+  for (const listener of listeners) {
+    try {
+      listener(diagnostic);
+    } catch {
+    }
+  }
+  if (typeof console === "undefined") return;
+  const tag = diagnostic.toolName ? `[webmcp:${diagnostic.toolName}]` : "[webmcp]";
+  const args = diagnostic.detail === void 0 ? [`${tag} ${diagnostic.message}`] : [`${tag} ${diagnostic.message}`, diagnostic.detail];
+  if (diagnostic.level === "error") {
+    console.error(...args);
+  } else if (diagnostic.level === "warn") {
+    console.warn(...args);
+  } else if (verbose) {
+    console.info(...args);
+  }
+}
+function clipDiagnosticText(text, maxLength = 400) {
+  return text.length > maxLength ? `${text.slice(0, maxLength)}\u2026 [+${text.length - maxLength} chars]` : text;
+}
+
 // src/validate.ts
 var SKIP_KEYWORDS = ["$ref", "anyOf", "oneOf", "allOf", "not", "if"];
 function isPlainObject(value) {
@@ -178,7 +215,7 @@ function validateTool(tool) {
   if (typeof process !== "undefined" && process.env?.NODE_ENV !== "production") {
     throw new TypeError(`WebMCP: ${problem}`);
   }
-  reportError(`WebMCP: ${problem}`, void 0);
+  reportWebMCP({ level: "error", code: "invalid-definition", message: problem });
   return false;
 }
 function textResult(text, isError = false) {
@@ -192,6 +229,11 @@ function jsonResult(value, maxLength = DEFAULT_MAX_RESULT_LENGTH) {
     return textResult("Error: tool result could not be serialized to JSON.", true);
   }
   if (maxLength > 0 && text.length > maxLength) {
+    reportWebMCP({
+      level: "warn",
+      code: "result-truncated",
+      message: `Tool result truncated from ${text.length} to ${maxLength} characters.`
+    });
     text = `${text.slice(0, maxLength)}\u2026 [truncated ${text.length - maxLength} characters]`;
   }
   return { content: [{ type: "text", text }] };
@@ -213,9 +255,22 @@ function wrapExecute(tool) {
   return {
     ...descriptor,
     async execute(args) {
+      reportWebMCP({
+        level: "info",
+        code: "execute",
+        message: "Tool invoked by an agent.",
+        toolName: tool.name,
+        detail: isWebMCPVerbose() ? args : void 0
+      });
       if (validateInput) {
         const problems = validateToolInput(args, tool.inputSchema);
         if (problems.length > 0) {
+          reportWebMCP({
+            level: "warn",
+            code: "invalid-arguments",
+            message: `Rejected agent call with invalid arguments: ${problems.join("; ")}`,
+            toolName: tool.name
+          });
           return textResult(
             `Invalid arguments for tool "${tool.name}": ${problems.join("; ")}`,
             true
@@ -224,9 +279,23 @@ function wrapExecute(tool) {
       }
       try {
         const result = await tool.execute(args);
+        reportWebMCP({
+          level: "info",
+          code: "execute-result",
+          message: "Tool answered the agent.",
+          toolName: tool.name,
+          detail: isWebMCPVerbose() ? clipDiagnosticText(safeStringify(result)) : void 0
+        });
         return tool.outputSchema ? result : normalizeResult(result);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        reportWebMCP({
+          level: "error",
+          code: "execute-error",
+          message: `execute() threw (answered to the agent as isError): ${message}`,
+          toolName: tool.name,
+          detail: error
+        });
         return textResult(`Tool "${tool.name}" failed: ${message}`, true);
       }
     }
@@ -236,8 +305,16 @@ function registerTool(tool, options = {}) {
   if (!validateTool(tool)) return () => {
   };
   const context = getModelContext();
-  if (!context) return () => {
-  };
+  if (!context) {
+    reportWebMCP({
+      level: "info",
+      code: "unsupported",
+      message: "WebMCP is unavailable in this environment; registerTool() is a no-op.",
+      toolName: tool.name
+    });
+    return () => {
+    };
+  }
   const controller = new AbortController();
   const { signal: outerSignal, ...rest } = options;
   if (outerSignal) {
@@ -254,14 +331,32 @@ function registerTool(tool, options = {}) {
     if (result instanceof Promise) {
       result.catch((error) => {
         registered = false;
-        reportError(`WebMCP: failed to register tool "${tool.name}"`, error);
+        reportWebMCP({
+          level: "error",
+          code: "register-failed",
+          message: `Failed to register tool (e.g. NotAllowedError under Permissions Policy): ${String(error)}`,
+          toolName: tool.name,
+          detail: error
+        });
       });
     }
   } catch (error) {
-    reportError(`WebMCP: failed to register tool "${tool.name}"`, error);
+    reportWebMCP({
+      level: "error",
+      code: "register-failed",
+      message: `registerTool() threw: ${String(error)}`,
+      toolName: tool.name,
+      detail: error
+    });
     return () => {
     };
   }
+  reportWebMCP({
+    level: "info",
+    code: "register",
+    message: "Tool registered.",
+    toolName: tool.name
+  });
   return () => {
     if (!registered) return;
     registered = false;
@@ -270,6 +365,12 @@ function registerTool(tool, options = {}) {
       context.unregisterTool?.(tool.name);
     } catch {
     }
+    reportWebMCP({
+      level: "info",
+      code: "unregister",
+      message: "Tool unregistered.",
+      toolName: tool.name
+    });
   };
 }
 function provideContext(tools) {
@@ -281,7 +382,12 @@ function provideContext(tools) {
     try {
       context.provideContext({ tools: tools.map((t) => wrapExecute(t)) });
     } catch (error) {
-      reportError("WebMCP: provideContext failed", error);
+      reportWebMCP({
+        level: "error",
+        code: "provide-context-failed",
+        message: `provideContext() threw: ${String(error)}`,
+        detail: error
+      });
       return () => {
       };
     }
@@ -297,9 +403,12 @@ function provideContext(tools) {
     for (const unregister of unregisters) unregister();
   };
 }
-function reportError(prefix, error) {
-  if (typeof console !== "undefined") {
-    console.error(prefix, error);
+function safeStringify(value) {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
   }
 }
 function toolFormAttrs(options) {
@@ -469,18 +578,271 @@ function applyArgsToForm(form, args) {
   return unapplied;
 }
 
+// src/events.ts
+var EVENT_NAME_ALIASES = {
+  toolchange: ["toolchange"],
+  toolactivated: ["toolactivated"],
+  // Chromium ships "toolcancel"; the explainer says "toolcanceled".
+  toolcanceled: ["toolcanceled", "toolcancel"]
+};
+function addWebMCPEventListener(name, handler) {
+  if (typeof window === "undefined") return () => {
+  };
+  const targets = [];
+  const context = getModelContext();
+  if (context && typeof context.addEventListener === "function") {
+    targets.push(context);
+  }
+  targets.push(window);
+  const seen = /* @__PURE__ */ new WeakSet();
+  const listener = (event) => {
+    if (seen.has(event)) return;
+    seen.add(event);
+    handler(event);
+  };
+  const names = EVENT_NAME_ALIASES[name] ?? [name];
+  for (const target of targets) {
+    for (const eventName of names) {
+      target.addEventListener(eventName, listener);
+    }
+  }
+  return () => {
+    for (const target of targets) {
+      for (const eventName of names) {
+        target.removeEventListener(eventName, listener);
+      }
+    }
+  };
+}
+
+// src/indicators.ts
+var STYLE_ATTRIBUTE = "data-webmcp-indicator-styles";
+var WEBMCP_INDICATOR_CSS = `
+form[data-webmcp-indicators]:is(:tool-form-active, [data-webmcp-active="true"]) {
+  outline: 2px solid var(--webmcp-indicator-color, #6d28d9);
+  outline-offset: 3px;
+}
+form[data-webmcp-indicators]:is(:tool-form-active, [data-webmcp-active="true"])
+  :is(button[type="submit"], input[type="submit"]) {
+  outline: 2px solid var(--webmcp-indicator-color, #6d28d9);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  form[data-webmcp-indicators]:is(:tool-form-active, [data-webmcp-active="true"])
+    :is(button[type="submit"], input[type="submit"]) {
+    animation: webmcp-submit-pulse 1.2s ease-in-out infinite;
+  }
+}
+@keyframes webmcp-submit-pulse {
+  50% { outline-offset: 5px; }
+}
+`;
+var injectionCount = 0;
+function injectWebMCPIndicatorStyles() {
+  if (typeof document === "undefined") return () => {
+  };
+  injectionCount++;
+  let style = document.head.querySelector(`style[${STYLE_ATTRIBUTE}]`);
+  if (!style) {
+    style = document.createElement("style");
+    style.setAttribute(STYLE_ATTRIBUTE, "");
+    style.textContent = WEBMCP_INDICATOR_CSS;
+    document.head.appendChild(style);
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    injectionCount--;
+    if (injectionCount <= 0) {
+      injectionCount = 0;
+      document.head.querySelector(`style[${STYLE_ATTRIBUTE}]`)?.remove();
+    }
+  };
+}
+
 // src/react/ToolForm.tsx
 import {
   createElement,
-  forwardRef
+  forwardRef,
+  useEffect,
+  useRef
 } from "react";
+var DEFAULT_PENDING_TIMEOUT_MS = 12e4;
 var ToolForm = forwardRef(
-  function ToolForm2({ name, description, autoSubmit, onAgentSubmit, onSubmit, children, ...rest }, ref) {
+  function ToolForm2({
+    name,
+    description,
+    autoSubmit,
+    onAgentSubmit,
+    onSubmit,
+    indicators,
+    pendingTimeoutMs = DEFAULT_PENDING_TIMEOUT_MS,
+    resetAfterAgentSubmit,
+    onPendingChange,
+    children,
+    ...rest
+  }, forwardedRef) {
+    const formRef = useRef(null);
+    const pendingRef = useRef({ pending: false, since: 0, timer: null });
+    const latest = useRef({ name, pendingTimeoutMs, resetAfterAgentSubmit, onPendingChange });
+    latest.current = { name, pendingTimeoutMs, resetAfterAgentSubmit, onPendingChange };
+    const setRefs = (node) => {
+      formRef.current = node;
+      if (typeof forwardedRef === "function") forwardedRef(node);
+      else if (forwardedRef) forwardedRef.current = node;
+    };
+    const setPendingAttribute = (on) => {
+      const form = formRef.current;
+      if (!form) return;
+      if (on) form.setAttribute("data-webmcp-active", "true");
+      else form.removeAttribute("data-webmcp-active");
+    };
+    const clearPending = () => {
+      const state = pendingRef.current;
+      if (state.timer) clearTimeout(state.timer);
+      state.timer = null;
+      if (!state.pending) return;
+      state.pending = false;
+      setPendingAttribute(false);
+      latest.current.onPendingChange?.(false);
+    };
+    const beginPending = () => {
+      const state = pendingRef.current;
+      const wasPending = state.pending;
+      if (state.timer) clearTimeout(state.timer);
+      state.pending = true;
+      state.since = Date.now();
+      setPendingAttribute(true);
+      if (!wasPending) latest.current.onPendingChange?.(true);
+      const timeout = latest.current.pendingTimeoutMs;
+      if (timeout > 0) {
+        state.timer = setTimeout(() => {
+          state.timer = null;
+          if (!pendingRef.current.pending) return;
+          const form = formRef.current;
+          reportWebMCP({
+            level: "warn",
+            code: "invocation-timeout",
+            message: `Agent invocation still unanswered after ${timeout}ms \u2014 cancelling it via form.reset() so the page's WebMCP channel stays healthy. The agent receives a 'cancelled' error.`,
+            toolName: latest.current.name
+          });
+          if (form?.isConnected) {
+            form.reset();
+          } else {
+            clearPending();
+          }
+        }, timeout);
+      }
+      setTimeout(() => {
+        const form = formRef.current;
+        if (!form || !pendingRef.current.pending) return;
+        try {
+          if (!form.matches(":tool-form-active")) clearPending();
+        } catch {
+        }
+      }, 0);
+    };
+    const concernsThisForm = (event, whenUnknown) => {
+      const toolName = event.toolName;
+      if (typeof toolName === "string" && toolName.length > 0) {
+        return toolName === latest.current.name;
+      }
+      return whenUnknown();
+    };
+    useEffect(() => {
+      const removeActivated = addWebMCPEventListener("toolactivated", (event) => {
+        const matchedByState = () => {
+          const form2 = formRef.current;
+          if (!form2) return false;
+          try {
+            return form2.matches(":tool-form-active");
+          } catch {
+            return true;
+          }
+        };
+        if (!concernsThisForm(event, matchedByState)) return;
+        if (pendingRef.current.pending) {
+          reportWebMCP({
+            level: "error",
+            code: "invocation-overlap",
+            message: "Tool was re-invoked while a previous invocation was still awaiting the user's submit. Chromium keeps one pending invocation per form and DROPS the previous reply callback \u2014 this can close the page's WebMCP channel and silently disable every tool until reload. Answer or cancel invocations promptly (keep pendingTimeoutMs enabled, or use autoSubmit for low-stakes forms).",
+            toolName: latest.current.name,
+            detail: { pendingSinceMs: Date.now() - pendingRef.current.since }
+          });
+        } else {
+          reportWebMCP({
+            level: "info",
+            code: "invocation-pending",
+            message: "Agent filled the form; awaiting the user's review submit (:tool-form-active is set).",
+            toolName: latest.current.name
+          });
+        }
+        beginPending();
+      });
+      const removeCanceled = addWebMCPEventListener("toolcanceled", (event) => {
+        if (!concernsThisForm(event, () => pendingRef.current.pending)) return;
+        if (pendingRef.current.pending) {
+          reportWebMCP({
+            level: "info",
+            code: "invocation-canceled",
+            message: "The agent cancelled the pending invocation.",
+            toolName: latest.current.name
+          });
+        }
+        clearPending();
+      });
+      const form = formRef.current;
+      const onReset = () => {
+        if (pendingRef.current.pending) {
+          reportWebMCP({
+            level: "info",
+            code: "invocation-canceled",
+            message: "Form was reset while an invocation was pending \u2014 the browser cancels the invocation and notifies the agent.",
+            toolName: latest.current.name
+          });
+        }
+        clearPending();
+      };
+      form?.addEventListener("reset", onReset);
+      return () => {
+        removeActivated();
+        removeCanceled();
+        form?.removeEventListener("reset", onReset);
+        const state = pendingRef.current;
+        if (state.timer) clearTimeout(state.timer);
+        state.timer = null;
+        state.pending = false;
+      };
+    }, [name]);
+    useEffect(() => {
+      if (!indicators) return;
+      return injectWebMCPIndicatorStyles();
+    }, [indicators]);
+    const finishAnswered = () => {
+      clearPending();
+      if (!latest.current.resetAfterAgentSubmit) return;
+      setTimeout(() => {
+        const form = formRef.current;
+        if (form?.isConnected && !pendingRef.current.pending) form.reset();
+      }, 0);
+    };
     const handleSubmit = (event) => {
       const form = event.currentTarget;
       const native = event.nativeEvent;
-      const isAgentSubmit = Boolean(native.agentInvoked) && typeof native.respondWith === "function";
+      const respondWith = typeof native.respondWith === "function" ? native.respondWith.bind(native) : void 0;
+      const isAgentSubmit = Boolean(native.agentInvoked) && respondWith !== void 0;
       if (!isAgentSubmit) {
+        if (native.agentInvoked) {
+          reportWebMCP({
+            level: "error",
+            code: "respondwith-missing",
+            message: "Agent-invoked submit, but SubmitEvent.respondWith() is unavailable in this browser \u2014 the invocation cannot be answered in-page.",
+            toolName: name
+          });
+          onSubmit?.(event);
+          return;
+        }
         if (typeof form.checkValidity === "function" && !form.checkValidity()) {
           event.preventDefault();
           form.reportValidity?.();
@@ -490,16 +852,50 @@ var ToolForm = forwardRef(
         return;
       }
       onSubmit?.(event);
-      if (!onAgentSubmit || typeof native.respondWith !== "function") return;
+      if (!onAgentSubmit) {
+        reportWebMCP({
+          level: "warn",
+          code: "agent-submit-navigation",
+          message: "Agent-invoked submit without an onAgentSubmit handler: the form will perform its default submission and the tool response is taken from the target page's ld+json. Pass onAgentSubmit to answer in-page without navigating.",
+          toolName: name
+        });
+        return;
+      }
+      if (!respondWith) return;
       event.preventDefault();
       const data = new FormData(form);
-      native.respondWith(
+      const startedAt = Date.now();
+      reportWebMCP({
+        level: "info",
+        code: "agent-submit",
+        message: "Answering agent-invoked submission via respondWith().",
+        toolName: name,
+        detail: { fields: Array.from(new Set(data.keys())) }
+      });
+      respondWith(
         (async () => {
           try {
-            return normalizeResult(await onAgentSubmit(data, event));
+            const result = normalizeResult(await onAgentSubmit(data, event));
+            reportWebMCP({
+              level: "info",
+              code: "agent-response",
+              message: `Agent invocation answered in ${Date.now() - startedAt}ms.`,
+              toolName: name,
+              detail: clipDiagnosticText(JSON.stringify(result) ?? "")
+            });
+            return result;
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
+            reportWebMCP({
+              level: "error",
+              code: "agent-response-error",
+              message: `onAgentSubmit failed (answered to the agent as isError): ${message}`,
+              toolName: name,
+              detail: error
+            });
             return textResult(`Tool "${name}" failed: ${message}`, true);
+          } finally {
+            finishAnswered();
           }
         })()
       );
@@ -508,7 +904,7 @@ var ToolForm = forwardRef(
       "form",
       {
         ...rest,
-        ref,
+        ref: setRefs,
         onSubmit: handleSubmit,
         // See the component doc: disable native constraint validation so an
         // agent-filled invalid field can't silently block submission and strand
@@ -516,7 +912,8 @@ var ToolForm = forwardRef(
         noValidate: true,
         toolname: name,
         tooldescription: description,
-        ...autoSubmit ? { toolautosubmit: "" } : {}
+        ...autoSubmit ? { toolautosubmit: "" } : {},
+        ...indicators ? { "data-webmcp-indicators": "" } : {}
       },
       children
     );
@@ -524,7 +921,7 @@ var ToolForm = forwardRef(
 );
 
 // src/react/useFormTool.ts
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect as useEffect2, useRef as useRef2, useState } from "react";
 function useFormTool(options) {
   const {
     formRef,
@@ -535,13 +932,13 @@ function useFormTool(options) {
     annotations,
     enabled = true
   } = options;
-  const optionsRef = useRef(options);
+  const optionsRef = useRef2(options);
   optionsRef.current = options;
   const [isRegistered, setIsRegistered] = useState(false);
   const [refreshCount, setRefreshCount] = useState(0);
   const refresh = useCallback(() => setRefreshCount((n) => n + 1), []);
   const definitionKey = JSON.stringify({ name, description, autoSubmit, annotations });
-  useEffect(() => {
+  useEffect2(() => {
     const form = formRef.current;
     if (!enabled || !form) {
       setIsRegistered(false);
@@ -590,16 +987,16 @@ function useFormTool(options) {
 }
 
 // src/react/useWebMCPTools.ts
-import { useEffect as useEffect2, useRef as useRef2, useState as useState2 } from "react";
+import { useEffect as useEffect3, useRef as useRef3, useState as useState2 } from "react";
 function useWebMCPTools(tools, options = {}) {
   const { enabled = true } = options;
-  const toolsRef = useRef2(tools);
+  const toolsRef = useRef3(tools);
   toolsRef.current = tools;
   const [isRegistered, setIsRegistered] = useState2(false);
   const definitionKey = JSON.stringify(
     tools.map(({ execute: _execute, ...definition }) => definition)
   );
-  useEffect2(() => {
+  useEffect3(() => {
     if (!enabled) {
       setIsRegistered(false);
       return;
@@ -640,21 +1037,17 @@ function useWebMCP() {
 }
 
 // src/react/useWebMCPEvent.ts
-import { useEffect as useEffect3, useRef as useRef3 } from "react";
+import { useEffect as useEffect4, useRef as useRef4 } from "react";
 function useWebMCPEvent(event, handler) {
-  const handlerRef = useRef3(handler);
+  const handlerRef = useRef4(handler);
   handlerRef.current = handler;
-  useEffect3(() => {
-    const context = getModelContext();
-    if (!context || typeof context.addEventListener !== "function") return;
-    const listener = (e) => handlerRef.current(e);
-    context.addEventListener(event, listener);
-    return () => context.removeEventListener(event, listener);
+  useEffect4(() => {
+    return addWebMCPEventListener(event, (e) => handlerRef.current(e));
   }, [event]);
 }
 
 // src/react/useWebMCPTool.ts
-import { useEffect as useEffect4, useMemo, useRef as useRef4, useState as useState3 } from "react";
+import { useEffect as useEffect5, useMemo, useRef as useRef5, useState as useState3 } from "react";
 function useWebMCPTool(options) {
   const {
     name,
@@ -667,7 +1060,7 @@ function useWebMCPTool(options) {
     validateInput,
     execute
   } = options;
-  const executeRef = useRef4(execute);
+  const executeRef = useRef5(execute);
   executeRef.current = execute;
   const [isRegistered, setIsRegistered] = useState3(false);
   const definitionKey = useMemo(
@@ -682,7 +1075,7 @@ function useWebMCPTool(options) {
     }),
     [name, description, inputSchema, outputSchema, annotations, exposedTo, validateInput]
   );
-  useEffect4(() => {
+  useEffect5(() => {
     if (!enabled) {
       setIsRegistered(false);
       return;
@@ -704,16 +1097,23 @@ function useWebMCPTool(options) {
 }
 export {
   DEFAULT_MAX_RESULT_LENGTH,
+  DEFAULT_PENDING_TIMEOUT_MS,
   ToolForm,
+  WEBMCP_INDICATOR_CSS,
+  addWebMCPEventListener,
   applyArgsToForm,
   extractFormSchema,
   getModelContext,
+  injectWebMCPIndicatorStyles,
   isWebMCPSupported,
   isWebMCPTestingSupported,
+  isWebMCPVerbose,
   jsonResult,
   normalizeResult,
+  onWebMCPDiagnostic,
   provideContext,
   registerTool,
+  setWebMCPVerbose,
   textResult,
   toolFormAttrs,
   toolParamAttrs,

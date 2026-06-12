@@ -1,11 +1,10 @@
 import { useEffect, useRef } from "react";
-import { getModelContext } from "../core";
+import { addWebMCPEventListener, type WebMCPEventName, type WebMCPToolEvent } from "../events";
 
-/** Events fired at the ModelContext object by the browser. */
-export type WebMCPEventName = "toolchange" | "toolactivated" | "toolcanceled";
+export type { WebMCPEventName };
 
 /**
- * Subscribes to a ModelContext event:
+ * Subscribes to a WebMCP lifecycle event:
  *
  * - `"toolchange"` — the page's toolset changed (tools registered/unregistered).
  * - `"toolactivated"` — an agent ran a tool (for declarative form tools
@@ -13,21 +12,24 @@ export type WebMCPEventName = "toolchange" | "toolactivated" | "toolcanceled";
  *   page can bring it to the user's attention for review).
  * - `"toolcanceled"` — the agent canceled an in-flight tool invocation.
  *
+ * Listeners are attached to every surface current implementations use:
+ * Chromium dispatches `toolactivated` and the cancel event (named
+ * `toolcancel` there) at the `window`, and only `toolchange` at the
+ * ModelContext object — this hook covers both targets and both cancel-event
+ * spellings, deduped per event. The event's `toolName` property (when the
+ * browser provides it) names the tool concerned.
+ *
  * The handler always sees the latest render's closure. No-op when WebMCP is
  * unavailable.
  */
 export function useWebMCPEvent(
   event: WebMCPEventName,
-  handler: (event: Event) => void,
+  handler: (event: WebMCPToolEvent) => void,
 ): void {
   const handlerRef = useRef(handler);
   handlerRef.current = handler;
 
   useEffect(() => {
-    const context = getModelContext();
-    if (!context || typeof context.addEventListener !== "function") return;
-    const listener = (e: Event) => handlerRef.current(e);
-    context.addEventListener(event, listener);
-    return () => context.removeEventListener(event, listener);
+    return addWebMCPEventListener(event, (e) => handlerRef.current(e));
   }, [event]);
 }

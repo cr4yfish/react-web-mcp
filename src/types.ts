@@ -177,6 +177,8 @@ declare module "react" {
     toolname?: string;
     /** WebMCP declarative API: natural-language description of the form tool. */
     tooldescription?: string;
+    /** WebMCP declarative API: optional human-readable title for the form tool. */
+    tooltitle?: string;
     /** WebMCP declarative API: lets the agent submit without user review. */
     toolautosubmit?: boolean | "";
   }

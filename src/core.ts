@@ -2,6 +2,7 @@
  * Framework-agnostic WebMCP core. Safe to import anywhere (including SSR /
  * Node) — every function degrades to a no-op when WebMCP is unavailable.
  */
+import { clipDiagnosticText, isWebMCPVerbose, reportWebMCP } from "./debug";
 import type {
   ModelContext,
   RegisterToolOptions,
@@ -74,7 +75,7 @@ function validateTool(tool: WebMCPTool<never> | WebMCPTool): boolean {
   if (typeof process !== "undefined" && process.env?.NODE_ENV !== "production") {
     throw new TypeError(`WebMCP: ${problem}`);
   }
-  reportError(`WebMCP: ${problem}`, undefined);
+  reportWebMCP({ level: "error", code: "invalid-definition", message: problem });
   return false;
 }
 
@@ -99,6 +100,11 @@ export function jsonResult(
     return textResult("Error: tool result could not be serialized to JSON.", true);
   }
   if (maxLength > 0 && text.length > maxLength) {
+    reportWebMCP({
+      level: "warn",
+      code: "result-truncated",
+      message: `Tool result truncated from ${text.length} to ${maxLength} characters.`,
+    });
     text = `${text.slice(0, maxLength)}… [truncated ${text.length - maxLength} characters]`;
   }
   return { content: [{ type: "text", text }] };
@@ -134,12 +140,25 @@ function wrapExecute<TArgs>(tool: WebMCPTool<TArgs>): WebMCPTool<TArgs> {
   return {
     ...descriptor,
     async execute(args: TArgs) {
+      reportWebMCP({
+        level: "info",
+        code: "execute",
+        message: "Tool invoked by an agent.",
+        toolName: tool.name,
+        detail: isWebMCPVerbose() ? args : undefined,
+      });
       // The agent is an untrusted client and browsers don't enforce
       // inputSchema — reject schema-violating calls with a readable isError
       // response so `execute` only ever sees arguments matching its types.
       if (validateInput) {
         const problems = validateToolInput(args, tool.inputSchema);
         if (problems.length > 0) {
+          reportWebMCP({
+            level: "warn",
+            code: "invalid-arguments",
+            message: `Rejected agent call with invalid arguments: ${problems.join("; ")}`,
+            toolName: tool.name,
+          });
           return textResult(
             `Invalid arguments for tool "${tool.name}": ${problems.join("; ")}`,
             true,
@@ -148,6 +167,13 @@ function wrapExecute<TArgs>(tool: WebMCPTool<TArgs>): WebMCPTool<TArgs> {
       }
       try {
         const result = await tool.execute(args);
+        reportWebMCP({
+          level: "info",
+          code: "execute-result",
+          message: "Tool answered the agent.",
+          toolName: tool.name,
+          detail: isWebMCPVerbose() ? clipDiagnosticText(safeStringify(result)) : undefined,
+        });
         // Tools with an outputSchema return structured values the browser
         // validates against that schema — don't re-shape them.
         return tool.outputSchema ? result : normalizeResult(result);
@@ -155,6 +181,13 @@ function wrapExecute<TArgs>(tool: WebMCPTool<TArgs>): WebMCPTool<TArgs> {
         // Best practice: report failures to the agent as a readable tool
         // response instead of an opaque exception, so it can self-correct.
         const message = error instanceof Error ? error.message : String(error);
+        reportWebMCP({
+          level: "error",
+          code: "execute-error",
+          message: `execute() threw (answered to the agent as isError): ${message}`,
+          toolName: tool.name,
+          detail: error,
+        });
         return textResult(`Tool "${tool.name}" failed: ${message}`, true);
       }
     },
@@ -176,7 +209,15 @@ export function registerTool<TArgs = Record<string, unknown>>(
 ): () => void {
   if (!validateTool(tool as WebMCPTool)) return () => {};
   const context = getModelContext();
-  if (!context) return () => {};
+  if (!context) {
+    reportWebMCP({
+      level: "info",
+      code: "unsupported",
+      message: "WebMCP is unavailable in this environment; registerTool() is a no-op.",
+      toolName: tool.name,
+    });
+    return () => {};
+  }
 
   const controller = new AbortController();
   const { signal: outerSignal, ...rest } = options;
@@ -196,13 +237,32 @@ export function registerTool<TArgs = Record<string, unknown>>(
     if (result instanceof Promise) {
       result.catch((error) => {
         registered = false;
-        reportError(`WebMCP: failed to register tool "${tool.name}"`, error);
+        reportWebMCP({
+          level: "error",
+          code: "register-failed",
+          message: `Failed to register tool (e.g. NotAllowedError under Permissions Policy): ${String(error)}`,
+          toolName: tool.name,
+          detail: error,
+        });
       });
     }
   } catch (error) {
-    reportError(`WebMCP: failed to register tool "${tool.name}"`, error);
+    reportWebMCP({
+      level: "error",
+      code: "register-failed",
+      message: `registerTool() threw: ${String(error)}`,
+      toolName: tool.name,
+      detail: error,
+    });
     return () => {};
   }
+
+  reportWebMCP({
+    level: "info",
+    code: "register",
+    message: "Tool registered.",
+    toolName: tool.name,
+  });
 
   return () => {
     if (!registered) return;
@@ -213,6 +273,12 @@ export function registerTool<TArgs = Record<string, unknown>>(
     } catch {
       // Older implementations may throw for unknown names — ignore.
     }
+    reportWebMCP({
+      level: "info",
+      code: "unregister",
+      message: "Tool unregistered.",
+      toolName: tool.name,
+    });
   };
 }
 
@@ -230,7 +296,12 @@ export function provideContext(tools: Array<WebMCPTool<never> | WebMCPTool>): ()
     try {
       context.provideContext({ tools: tools.map((t) => wrapExecute(t as WebMCPTool)) });
     } catch (error) {
-      reportError("WebMCP: provideContext failed", error);
+      reportWebMCP({
+        level: "error",
+        code: "provide-context-failed",
+        message: `provideContext() threw: ${String(error)}`,
+        detail: error,
+      });
       return () => {};
     }
     return () => {
@@ -248,9 +319,12 @@ export function provideContext(tools: Array<WebMCPTool<never> | WebMCPTool>): ()
   };
 }
 
-function reportError(prefix: string, error: unknown): void {
-  if (typeof console !== "undefined") {
-    console.error(prefix, error);
+function safeStringify(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
   }
 }
 

@@ -168,7 +168,53 @@ form.addEventListener("submit", (e) => {
   agent, awaiting user review/submission).
 - `:tool-submit-active` — that form's submit button.
 
-Use them to visually highlight agent-filled forms for review.
+Use them to visually highlight agent-filled forms for review. The "running"
+state ends when the form is reset or removed, the `respondWith` promise
+resolves, the tool attributes change, or a `toolautosubmit` submission
+completes.
+
+### Chromium implementation notes (declarative lifecycle)
+
+Verified against Chromium's `HTMLFormElement`/`ModelContext` sources; these
+details explain real-world failure modes:
+
+- **One pending invocation per form.** The form holds a single reply slot. If
+  the tool is invoked again while a previous invocation is still pending
+  (filled, awaiting the user's submit), the older invocation's internal reply
+  callback is **dropped without being answered** — dropping a pending reply
+  closes the document's WebMCP message pipe, after which **every tool on the
+  page silently stops working until reload**. Never leave invocations pending
+  indefinitely.
+- **`form.reset()` is the sanctioned page-side cancel.** Resetting a form with
+  a pending invocation answers the agent with a proper "cancelled by a form
+  reset" error and returns the form to idle — the channel survives. (Removing
+  the form or changing `toolname`/`tooldescription` cancels similarly.)
+- **`agentInvoked` is true on the user's review submit.** Any submit that
+  completes a pending invocation carries `agentInvoked: true` — including the
+  human clicking the submit button after reviewing the agent-filled form. The
+  flag means "this submission answers an agent invocation", not "the agent
+  performed this submission".
+- **`respondWith()` rules** (InvalidStateError otherwise): only on events with
+  `agentInvoked === true`, only after `preventDefault()`, and only
+  synchronously during dispatch. `preventDefault()` without `respondWith()` is
+  answered browser-side with a "programming error" message to the agent.
+- **Events**: `toolactivated` and `toolcancel` (Chromium's name — the explainer
+  says `toolcanceled`) are `WebMCPEvent`s with a `toolName` property,
+  dispatched at the **window**; only `toolchange` fires at the ModelContext
+  object. `toolactivated` fires after the fill (and, with `toolautosubmit`,
+  after the auto-submission has been dispatched). `toolcancel` currently fires
+  for imperative tools only.
+- **Schema-affecting DOM changes re-register the tool** (new tool object,
+  same name) and cancel a pending invocation with "tool definition was
+  updated". The synthesized schema depends on control structure (names, types,
+  `required`, option values), not current values — so agent fills and user
+  typing don't churn registration, but adding/removing/renaming controls does.
+- **Agent fills dispatch real `input`/`change` events** (and `toolactivated`
+  only afterwards), so framework-controlled inputs stay in sync.
+- **Without `toolautosubmit`** the browser focuses the submit button and tells
+  the agent to wait for user input; the invocation stays pending until the
+  user submits (→ `respondWith`), the page resets/changes the form, or the
+  agent cancels.
 
 ## Security model
 
