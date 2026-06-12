@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.3.4",
+    "date": "2026-06-12",
+    "released": false,
+    "changes": [
+      {
+        "type": "added",
+        "text": "Re-invoke guard on ToolForm (reinvokeGuard, default true): when the agent re-invokes a review-mode tool while an invocation is still pending, the guard intercepts the new fill's input events — the one window before Chromium drops the old reply — snapshots all control values, cancels the old invocation cleanly via form.reset(), restores the values, and lets the new invocation proceed; the channel-killing callback drop can no longer happen, and an invocation-reinvoked warning diagnostic is emitted"
+      }
+    ]
+  },
+  {
     "version": "0.3.3",
     "date": "2026-06-12",
     "released": true,

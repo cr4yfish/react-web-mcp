@@ -20,7 +20,7 @@ import {
 } from "../src/debug";
 import { addWebMCPEventListener } from "../src/events";
 import { injectWebMCPIndicatorStyles } from "../src/indicators";
-import { ToolForm } from "../src/react/ToolForm";
+import { ToolForm, type ToolFormProps } from "../src/react/ToolForm";
 import { useWebMCPEvent } from "../src/react/useWebMCPEvent";
 import type { ToolResponse } from "../src/types";
 import {
@@ -258,6 +258,106 @@ describe("ToolForm invocation lifecycle", () => {
     });
     expect(pendingChanges).toEqual([]);
     expect((getByTestId("form") as HTMLFormElement).hasAttribute("data-webmcp-active")).toBe(false);
+  });
+
+  // The re-invoke guard simulates Chromium's behavior: a re-invocation's
+  // form fill dispatches plain (non-InputEvent) input events on unfocused
+  // controls BEFORE the old reply slot is overwritten — form.reset() in that
+  // window releases the old invocation properly and saves the channel.
+  describe("re-invoke guard", () => {
+    function renderGuarded(extra: Partial<ToolFormProps> = {}) {
+      installMockModelContext();
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const utils = render(
+        <ToolForm name="send-feedback" description="d" autoSubmit={false} {...extra} data-testid="form">
+          <input name="message" defaultValue="" />
+          <select name="rating" defaultValue="5">
+            {["1", "5"].map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
+          <button type="submit">go</button>
+        </ToolForm>,
+      );
+      const form = utils.getByTestId("form") as HTMLFormElement;
+      const message = form.elements.namedItem("message") as HTMLInputElement;
+      act(() => {
+        dispatchToolEvent("toolactivated", "send-feedback"); // invocation 1 pending
+      });
+      return { ...utils, form, message };
+    }
+
+    function simulateAgentFill(message: HTMLInputElement, value: string) {
+      message.value = value; // programmatic fill...
+      message.dispatchEvent(new Event("input", { bubbles: true })); // ...plain Event, unfocused target
+    }
+
+    it("releases the pending invocation via reset and preserves the new fill", () => {
+      const { form, message } = renderGuarded();
+      const reset = vi.spyOn(form, "reset");
+      act(() => {
+        simulateAgentFill(message, "second invocation text");
+      });
+      expect(reset).toHaveBeenCalledTimes(1);
+      // Values survive the reset (whole-form snapshot/restore):
+      expect(message.value).toBe("second invocation text");
+      // The old invocation's pending state is gone:
+      expect(form.hasAttribute("data-webmcp-active")).toBe(false);
+      expect(diagnostics.some((d) => d.code === "invocation-reinvoked" && d.level === "warn")).toBe(
+        true,
+      );
+    });
+
+    it("ignores real user typing (InputEvent with inputType)", () => {
+      const { form, message } = renderGuarded();
+      const reset = vi.spyOn(form, "reset");
+      act(() => {
+        message.value = "user typed";
+        message.dispatchEvent(
+          new InputEvent("input", { bubbles: true, inputType: "insertText" }),
+        );
+      });
+      expect(reset).not.toHaveBeenCalled();
+    });
+
+    it("ignores changes on the focused control", () => {
+      const { form, message } = renderGuarded();
+      const reset = vi.spyOn(form, "reset");
+      act(() => {
+        message.focus();
+        message.value = "focused edit";
+        message.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      expect(reset).not.toHaveBeenCalled();
+    });
+
+    it("does nothing while no invocation is pending", () => {
+      installMockModelContext();
+      const { getByTestId } = render(
+        <ToolForm name="t" description="d" autoSubmit={false} data-testid="form">
+          <input name="message" />
+          <button type="submit">go</button>
+        </ToolForm>,
+      );
+      const form = getByTestId("form") as HTMLFormElement;
+      const reset = vi.spyOn(form, "reset");
+      const message = form.elements.namedItem("message") as HTMLInputElement;
+      act(() => {
+        simulateAgentFill(message, "x");
+      });
+      expect(reset).not.toHaveBeenCalled();
+    });
+
+    it("can be disabled with reinvokeGuard={false}", () => {
+      const { form, message } = renderGuarded({ reinvokeGuard: false });
+      const reset = vi.spyOn(form, "reset");
+      act(() => {
+        simulateAgentFill(message, "x");
+      });
+      expect(reset).not.toHaveBeenCalled();
+    });
   });
 
   it("reports an overlapping invocation as an error diagnostic", () => {

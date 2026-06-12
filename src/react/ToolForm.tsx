@@ -106,7 +106,61 @@ export interface ToolFormProps
    * or reset). Useful for rendering custom "review this form" UI.
    */
   onPendingChange?: (pending: boolean) => void;
+  /**
+   * Automatic re-invoke guard for review-mode forms (default `true`).
+   *
+   * When the agent re-invokes the tool while a previous invocation is still
+   * awaiting the user's submit, Chromium drops the previous invocation's
+   * reply and the page's WebMCP channel dies (see {@link autoSubmit}). The
+   * guard exploits the one window the page gets: the new invocation's form
+   * fill dispatches `input` events *before* the browser overwrites the old
+   * reply slot. On a high-confidence fill signal (a programmatic — non-user —
+   * `input` event on an unfocused control while a review is pending), the
+   * guard snapshots every control, calls `form.reset()` — which makes the
+   * browser answer the OLD invocation with a proper "cancelled" error,
+   * keeping the channel alive — and restores the values so the new fill
+   * completes intact. Emits an `invocation-reinvoked` warning diagnostic.
+   *
+   * Caveats: it must not be combined with a `reset`-event listener that
+   * calls `preventDefault()` (a cancelled reset skips the browser-side
+   * cancellation), and a misfire (e.g. browser autofill writing to unfocused
+   * controls during a pending review) costs only the pending invocation —
+   * values are preserved.
+   */
+  reinvokeGuard?: boolean;
   children?: ReactNode;
+}
+
+type ControlSnapshot =
+  | { kind: "select"; el: HTMLSelectElement; selected: boolean[] }
+  | { kind: "value"; el: HTMLInputElement | HTMLTextAreaElement; value: string; checked: boolean };
+
+function snapshotFormControls(form: HTMLFormElement): ControlSnapshot[] {
+  const out: ControlSnapshot[] = [];
+  for (const el of Array.from(form.elements)) {
+    if (el instanceof HTMLSelectElement) {
+      out.push({ kind: "select", el, selected: Array.from(el.options).map((o) => o.selected) });
+    } else if (el instanceof HTMLTextAreaElement) {
+      out.push({ kind: "value", el, value: el.value, checked: false });
+    } else if (el instanceof HTMLInputElement && el.type !== "file") {
+      out.push({ kind: "value", el, value: el.value, checked: el.checked });
+    }
+  }
+  return out;
+}
+
+function restoreFormControls(snapshot: ControlSnapshot[]): void {
+  for (const entry of snapshot) {
+    if (entry.kind === "select") {
+      entry.selected.forEach((selected, i) => {
+        const option = entry.el.options[i];
+        if (option) option.selected = selected;
+      });
+    } else {
+      entry.el.value = entry.value;
+      if (entry.el instanceof HTMLInputElement) entry.el.checked = entry.checked;
+    }
+  }
 }
 
 /**
@@ -146,6 +200,7 @@ export const ToolForm = forwardRef<HTMLFormElement, ToolFormProps>(
       pendingTimeoutMs = DEFAULT_PENDING_TIMEOUT_MS,
       resetAfterAgentSubmit,
       onPendingChange,
+      reinvokeGuard = true,
       children,
       ...rest
     },
@@ -156,8 +211,14 @@ export const ToolForm = forwardRef<HTMLFormElement, ToolFormProps>(
 
     // Latest props for the long-lived event subscriptions below, so they
     // never observe stale closures and never need to re-subscribe.
-    const latest = useRef({ name, pendingTimeoutMs, resetAfterAgentSubmit, onPendingChange });
-    latest.current = { name, pendingTimeoutMs, resetAfterAgentSubmit, onPendingChange };
+    const latest = useRef({
+      name,
+      pendingTimeoutMs,
+      resetAfterAgentSubmit,
+      onPendingChange,
+      reinvokeGuard,
+    });
+    latest.current = { name, pendingTimeoutMs, resetAfterAgentSubmit, onPendingChange, reinvokeGuard };
 
     const setRefs = (node: HTMLFormElement | null) => {
       formRef.current = node;
@@ -259,11 +320,11 @@ export const ToolForm = forwardRef<HTMLFormElement, ToolFormProps>(
             level: "error",
             code: "invocation-overlap",
             message:
-              "Tool was re-invoked while a previous invocation was still awaiting the user's submit. " +
-              "Chromium keeps one pending invocation per form and DROPS the previous reply callback — " +
-              "this can close the page's WebMCP channel and silently disable every tool until reload. " +
-              "Answer or cancel invocations promptly (keep pendingTimeoutMs enabled, or use autoSubmit " +
-              "for low-stakes forms).",
+              "Tool was re-invoked while a previous invocation was still awaiting the user's submit, " +
+              "and the re-invoke guard did not catch the fill. Chromium keeps one pending invocation " +
+              "per form and DROPS the previous reply callback — this can close the page's WebMCP " +
+              "channel and silently disable every tool until reload. Keep reinvokeGuard and " +
+              "pendingTimeoutMs enabled, or use autoSubmit (the default) for low-stakes forms.",
             toolName: latest.current.name,
             detail: { pendingSinceMs: Date.now() - pendingRef.current.since },
           });
@@ -308,10 +369,54 @@ export const ToolForm = forwardRef<HTMLFormElement, ToolFormProps>(
       };
       form?.addEventListener("reset", onReset);
 
+      // Re-invoke guard: a re-invocation's form fill dispatches input events
+      // synchronously BEFORE Chromium overwrites the pending invocation's
+      // reply slot. Releasing the old invocation via form.reset() inside that
+      // window answers it with a proper "cancelled" error and saves the
+      // page's WebMCP channel; snapshot/restore keeps every control value so
+      // the new fill completes intact.
+      let guardRestoring = false;
+      const onGuardInput = (event: Event) => {
+        if (!latest.current.reinvokeGuard || guardRestoring) return;
+        if (!pendingRef.current.pending) return;
+        const guardedForm = formRef.current;
+        const target = event.target;
+        if (!guardedForm || !(target instanceof Element)) return;
+        // Definite user keystroke: real typing always carries an inputType.
+        if (typeof InputEvent !== "undefined" && event instanceof InputEvent && event.inputType) {
+          return;
+        }
+        // User-driven changes happen on the focused control; the agent's
+        // fill writes to controls regardless of focus.
+        if (target === guardedForm.ownerDocument.activeElement) return;
+
+        const snapshot = snapshotFormControls(guardedForm);
+        reportWebMCP({
+          level: "warn",
+          code: "invocation-reinvoked",
+          message:
+            "Tool re-invoked while a previous invocation was awaiting the user's submit — " +
+            "auto-cancelled the previous invocation via form.reset() during the new fill, before " +
+            "the browser could drop its reply (which would have killed the page's WebMCP channel). " +
+            "The new invocation proceeds normally. Disable with reinvokeGuard={false}.",
+          toolName: latest.current.name,
+          detail: { pendingSinceMs: Date.now() - pendingRef.current.since },
+        });
+        guardRestoring = true;
+        try {
+          guardedForm.reset(); // Browser answers the OLD invocation 'cancelled'; our reset listener clears pending.
+          restoreFormControls(snapshot);
+        } finally {
+          guardRestoring = false;
+        }
+      };
+      form?.addEventListener("input", onGuardInput, true);
+
       return () => {
         removeActivated();
         removeCanceled();
         form?.removeEventListener("reset", onReset);
+        form?.removeEventListener("input", onGuardInput, true);
         const state = pendingRef.current;
         if (state.timer) clearTimeout(state.timer);
         state.timer = null;

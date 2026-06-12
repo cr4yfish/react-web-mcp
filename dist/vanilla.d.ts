@@ -301,7 +301,7 @@ declare function applyArgsToForm(form: HTMLFormElement, args: Record<string, unk
  * with `setWebMCPVerbose(true)`.
  */
 type WebMCPDiagnosticLevel = "info" | "warn" | "error";
-type WebMCPDiagnosticCode = "unsupported" | "register" | "unregister" | "register-failed" | "execute" | "execute-result" | "execute-error" | "invalid-arguments" | "result-truncated" | "invalid-definition" | "provide-context-failed" | "agent-submit" | "agent-response" | "agent-response-error" | "respondwith-missing" | "agent-submit-navigation" | "invocation-pending" | "invocation-overlap" | "invocation-timeout" | "invocation-canceled";
+type WebMCPDiagnosticCode = "unsupported" | "register" | "unregister" | "register-failed" | "execute" | "execute-result" | "execute-error" | "invalid-arguments" | "result-truncated" | "invalid-definition" | "provide-context-failed" | "agent-submit" | "agent-response" | "agent-response-error" | "respondwith-missing" | "agent-submit-navigation" | "invocation-pending" | "invocation-overlap" | "invocation-reinvoked" | "invocation-timeout" | "invocation-canceled";
 interface WebMCPDiagnostic {
     level: WebMCPDiagnosticLevel;
     code: WebMCPDiagnosticCode;

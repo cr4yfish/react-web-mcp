@@ -304,7 +304,7 @@ declare function applyArgsToForm(form: HTMLFormElement, args: Record<string, unk
  * with `setWebMCPVerbose(true)`.
  */
 type WebMCPDiagnosticLevel = "info" | "warn" | "error";
-type WebMCPDiagnosticCode = "unsupported" | "register" | "unregister" | "register-failed" | "execute" | "execute-result" | "execute-error" | "invalid-arguments" | "result-truncated" | "invalid-definition" | "provide-context-failed" | "agent-submit" | "agent-response" | "agent-response-error" | "respondwith-missing" | "agent-submit-navigation" | "invocation-pending" | "invocation-overlap" | "invocation-timeout" | "invocation-canceled";
+type WebMCPDiagnosticCode = "unsupported" | "register" | "unregister" | "register-failed" | "execute" | "execute-result" | "execute-error" | "invalid-arguments" | "result-truncated" | "invalid-definition" | "provide-context-failed" | "agent-submit" | "agent-response" | "agent-response-error" | "respondwith-missing" | "agent-submit-navigation" | "invocation-pending" | "invocation-overlap" | "invocation-reinvoked" | "invocation-timeout" | "invocation-canceled";
 interface WebMCPDiagnostic {
     level: WebMCPDiagnosticLevel;
     code: WebMCPDiagnosticCode;
@@ -453,6 +453,28 @@ interface ToolFormProps extends Omit<FormHTMLAttributes<HTMLFormElement>, "tooln
      * or reset). Useful for rendering custom "review this form" UI.
      */
     onPendingChange?: (pending: boolean) => void;
+    /**
+     * Automatic re-invoke guard for review-mode forms (default `true`).
+     *
+     * When the agent re-invokes the tool while a previous invocation is still
+     * awaiting the user's submit, Chromium drops the previous invocation's
+     * reply and the page's WebMCP channel dies (see {@link autoSubmit}). The
+     * guard exploits the one window the page gets: the new invocation's form
+     * fill dispatches `input` events *before* the browser overwrites the old
+     * reply slot. On a high-confidence fill signal (a programmatic — non-user —
+     * `input` event on an unfocused control while a review is pending), the
+     * guard snapshots every control, calls `form.reset()` — which makes the
+     * browser answer the OLD invocation with a proper "cancelled" error,
+     * keeping the channel alive — and restores the values so the new fill
+     * completes intact. Emits an `invocation-reinvoked` warning diagnostic.
+     *
+     * Caveats: it must not be combined with a `reset`-event listener that
+     * calls `preventDefault()` (a cancelled reset skips the browser-side
+     * cancellation), and a misfire (e.g. browser autofill writing to unfocused
+     * controls during a pending review) costs only the pending invocation —
+     * values are preserved.
+     */
+    reinvokeGuard?: boolean;
     children?: ReactNode;
 }
 /**
